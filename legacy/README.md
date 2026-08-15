@@ -1,4 +1,4 @@
-# smol-ssh-install
+# smol-tailscaler
 
 One PowerShell script to set up SSH + Tailscale on any Windows machine.
 

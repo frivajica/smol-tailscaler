@@ -1,4 +1,4 @@
-# smol-ssh-install
+# smol-tailscaler
 
 One-click Windows setup for **SSH + Tailscale** — a small Go binary you run once, then `ssh` in.
 
