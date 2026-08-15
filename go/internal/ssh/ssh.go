@@ -227,12 +227,12 @@ func unzip(zipPath, destDir string) error {
 			return fmt.Errorf("zip entry escapes destination: %s", f.Name)
 		}
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0); err != nil {
+			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
 		src, err := f.Open()
