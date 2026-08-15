@@ -1,0 +1,9 @@
+# Secrets - never commit
+.env
+
+# Built binaries
+dist/
+
+# Go build artifacts
+go/setup.exe
+go/setup-windows
