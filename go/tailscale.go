@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 )
 
 func findTailscalePath() string {
@@ -109,10 +111,26 @@ func hideTailscaleTray() {
 
 func tailscaleAuth(tsPath string) error {
 	step(5, 6, "Tailscale auth")
-	if err := runCmdOK(tsPath, "status"); err != nil {
+	statusOut, err := runCmd(tsPath, "status")
+	if err != nil {
+		cGray("  tailscale status: %s\n", strings.TrimSpace(statusOut))
 		// Not connected - authenticate with the embedded/flag auth key.
-		if err := runCmdOK(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended"); err != nil {
-			return fmt.Errorf("tailscale up: %w", err)
+		out, upErr := runCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended")
+		if upErr != nil {
+			// A broken state store (failed TPM->plaintext migration or a file
+			// locked by a stale process) blocks backend start entirely. Clear
+			// the node state per Tailscale's recovery steps, then retry once.
+			if strings.Contains(strings.ToLower(out+statusOut), "state store") {
+				warn("Tailscale state store is unhealthy - resetting node state and retrying")
+				if repairErr := repairTailscaleState(); repairErr != nil {
+					return fmt.Errorf("Tailscale state store repair: %w", repairErr)
+				}
+				if out, retryErr := runCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended"); retryErr != nil {
+					return fmt.Errorf("tailscale up after state reset: %w (%s)", retryErr, strings.TrimSpace(out))
+				}
+			} else {
+				return fmt.Errorf("tailscale up: %w (%s)", upErr, strings.TrimSpace(out))
+			}
 		}
 		ok("Tailscale connected, unattended mode enabled")
 		return nil
@@ -122,6 +140,42 @@ func tailscaleAuth(tsPath string) error {
 	}
 	ok("Tailscale already connected, unattended confirmed")
 	return nil
+}
+
+// repairTailscaleState stops the service, removes the node state files, and
+// restarts it so the backend can re-initialize cleanly. The node is then
+// re-registered with the embedded auth key.
+func repairTailscaleState() error {
+	runCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
+	runCmdOK("sc.exe", "stop", "Tailscale")
+	time.Sleep(2 * time.Second)
+
+	// Try to clear any restrictive ACLs on the state dir first so deletion
+	// isn't blocked by "Access is denied".
+	runCmdOK("takeown", "/F", `C:\ProgramData\Tailscale`, "/R", "/D", "Y")
+	runCmdOK("icacls", `C:\ProgramData\Tailscale`, "/reset", "/T", "/C")
+
+	paths := []string{
+		`C:\ProgramData\Tailscale\server-state.conf`,
+		`C:\ProgramData\Tailscale\tailscaled.state`,
+		`C:\ProgramData\Tailscale\tailscaled.state.lock`,
+		`C:\ProgramData\Tailscale\ipn-server-state.json`,
+		os.Getenv("USERPROFILE") + `\AppData\Local\Tailscale`,
+	}
+	for _, p := range paths {
+		os.RemoveAll(p)
+	}
+
+	if err := runCmdOK("sc.exe", "start", "Tailscale"); err != nil {
+		return fmt.Errorf("starting Tailscale service: %w", err)
+	}
+	for i := 0; i < 30; i++ {
+		if serviceRunning("Tailscale") {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("Tailscale service did not reach RUNNING state after repair")
 }
 
 // tailscaleIP fetches the node's Tailscale IPv4 address.

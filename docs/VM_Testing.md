@@ -34,7 +34,7 @@ Run `setup.exe`, break permissions, change ACLs — whatever.
 
 ### 4. Revert — resets everything in seconds (host, Admin)
 ```powershell
-Restore-VMCheckpoint -VMName "Windows VM NAME" -SnapshotName "clean" -Confirm:$false
+Restore-VMCheckpoint -VMName "Windows VM NAME" -Name "clean" -Confirm:$false
 Start-VM "Windows VM NAME"
 ```
 
