@@ -5,7 +5,7 @@ One-click Windows setup for **SSH + Tailscale** — a small Go binary you run on
 ## What it does
 
 ```
-1  OpenSSH Server    → installs (DISM, GitHub fallback on Home)
+1  OpenSSH Server    → installs (DISM, GitHub fallback if Windows Update is unavailable or stalls)
 2  Admin user        → creates / resets password, adds to Administrators
 3  sshd_config       → sane defaults, password auth ON (disable after keys)
 4  Tailscale         → installs if missing; locks down policies (incoming on, always-on), hides tray

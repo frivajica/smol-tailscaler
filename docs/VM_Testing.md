@@ -67,7 +67,7 @@ Use the Mac's Tailscale IP (or LAN IP if the VM has no Tailscale yet).
 
 - **Tailscale re-auth** — reverting reverts Tailscale state; `setup.exe` re-registers the node. If "Require device approval" is on, approve a node every cycle. A **single-use** auth key is consumed on first use, so later cycles fail — use a reusable or ephemeral key (see `docs/SECURITY.md`).
 - **Signing / Smart App Control** — `setup.exe` is code-signed with a self-signed cert each machine must trust (double-click `signing.crt` → install into Trusted Root + Trusted Publishers). Reverting a checkpoint also reverts that trust, so re-import the cert every cycle — or disable Smart App Control once and leave it off.
-- **Home guest** — DISM "succeeds" but never installs sshd (`0x800f0950`), so `setup.exe` always falls back to GitHub. **Expected and verified.** Install Pro in the VM only to test the Windows Update path.
+- **Home guest** — DISM cannot install the server there (`0x800f0950`), so `setup.exe` prints `DISM did not succeed ... trying GitHub...` and always falls back to GitHub. **Expected and verified.** Install Pro in the VM only to test the Windows Update path. The DISM/query steps show a live `still running (Xs elapsed)...` ticker and auto-fall back to GitHub if Windows Update stalls past their timeouts, so a stuck step no longer sits silent.
 - **Elevation** — `setup.exe` self-elevates via UAC on double-click (or use `run-setup.bat`). `-verify` must also run elevated.
 - **Snapshots on a different disk** — keep checkpoints/VHDX off the OS disk (performance/isolation).
 - **Nested virtualization** — only needed to test Hyper-V *inside* the VM.
