@@ -8,15 +8,15 @@ import (
 
 const sshdConfigPath = `C:\ProgramData\ssh\sshd_config`
 
-func runSetup() error {
+func runSetup() (string, error) {
 	if err := stepOpenSSH(); err != nil {
-		return fmt.Errorf("OpenSSH install: %w", err)
+		return "", fmt.Errorf("OpenSSH install: %w", err)
 	}
 	if err := stepUser(); err != nil {
-		return fmt.Errorf("user setup: %w", err)
+		return "", fmt.Errorf("user setup: %w", err)
 	}
 	if err := writeSshdConfig(); err != nil {
-		return fmt.Errorf("writing sshd_config: %w", err)
+		return "", fmt.Errorf("writing sshd_config: %w", err)
 	}
 	tsPath, err := stepTailscale()
 	if err != nil {
@@ -27,14 +27,27 @@ func runSetup() error {
 	// Idempotency gate: setup only reports success when the services it
 	// configured are actually running.
 	if !serviceRunning("sshd") {
-		return fmt.Errorf("sshd is not RUNNING after setup - OpenSSH install may have failed")
+		return tsPath, fmt.Errorf("sshd is not RUNNING after setup - OpenSSH install may have failed")
 	}
 	if !serviceRunning("Tailscale") {
 		warn("Tailscale service is not RUNNING after setup")
 	}
 
-	printReport(tsPath)
-	return nil
+	// Land SSH sessions in PowerShell instead of cmd.exe.
+	if err := setDefaultShell(); err != nil {
+		warn("could not set PowerShell as default shell: %s", err)
+	} else {
+		ok("Default shell set to PowerShell")
+	}
+	return tsPath, nil
+}
+
+// setDefaultShell makes OpenSSH launch PowerShell for interactive sessions
+// instead of cmd.exe via the DefaultShell registry value.
+func setDefaultShell() error {
+	const shell = `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
+	script := fmt.Sprintf("New-Item -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Force | Out-Null; Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name 'DefaultShell' -Value '%s' -Force", shell)
+	return runCmdOK("powershell", "-NoProfile", "-Command", script)
 }
 
 // stepOpenSSH ensures the OpenSSH Server service exists, installing via DISM

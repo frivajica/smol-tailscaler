@@ -52,6 +52,10 @@ func verify() int {
 		check("Firewall port 22", false, "rule missing")
 	}
 
+	// 3b. Default shell is PowerShell (not cmd.exe)
+	out, err := runPS("(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell")
+	check("Default shell is PowerShell", err == nil && strings.Contains(strings.ToLower(out), "powershell"), strings.TrimSpace(out))
+
 	// 4. User + admin membership
 	if userExists(targetUser) {
 		check("User "+targetUser, true, "")

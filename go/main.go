@@ -62,10 +62,13 @@ func main() {
 
 	banner()
 
-	if err := runSetup(); err != nil {
+	tsPath, err := runSetup()
+	if err != nil {
+		printReport(tsPath, false)
 		fatal("Setup failed: %s", err)
 	}
 
+	printReport(tsPath, true)
 	exit(0)
 }
 

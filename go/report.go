@@ -11,11 +11,15 @@ func printField(label, value string) {
 	cWhite(fmt.Sprintf("%s\n", value))
 }
 
-func printReport(tsPath string) {
+func printReport(tsPath string, success bool) {
 	hostname, _ := os.Hostname()
 
 	cCyan("\n==============================================")
-	cCyan(" DEPLOYMENT COMPLETE - SAVE THIS INFO         ")
+	if success {
+		cCyan(" DEPLOYMENT COMPLETE - SAVE THIS INFO         ")
+	} else {
+		cRed(" SETUP INCOMPLETE - PARTIAL STATE BELOW        ")
+	}
 	cCyan("==============================================")
 	fmt.Println()
 	printField("User", targetUser)
@@ -63,8 +67,12 @@ func printReport(tsPath string) {
 		}
 	}
 
-	cGreen("\nMachine is remotely accessible. Save the password before closing!")
-	cYellow("Remember: change the temporary password after first login.\n")
+	if success {
+		cGreen("\nMachine is remotely accessible. Save the password before closing!")
+		cYellow("Remember: change the temporary password after first login.\n")
+	} else {
+		cRed("\nSetup did not complete. Check the failed step above.\n")
+	}
 }
 
 // startType extracts the START_TYPE value from `sc qc` output.
