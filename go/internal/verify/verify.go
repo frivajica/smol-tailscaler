@@ -1,19 +1,22 @@
-package main
+// Package verify checks the current machine state against the setup's
+// expectations without changing anything.
+package verify
 
 import (
 	"fmt"
 	"os"
 	"strings"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/ssh"
-	"setup-windows/internal/tailscale"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/users"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/ssh"
+	"smol-tailscaler/internal/tailscale"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/users"
+	"smol-tailscaler/internal/winutil"
 )
 
-func verify(cfg *config.Config) int {
+// Run checks every configured component and returns a process exit code.
+func Run(cfg *config.Config) int {
 	ui.Header("Verify: SSH + Tailscale state")
 
 	failed := false

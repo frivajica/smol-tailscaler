@@ -1,22 +1,24 @@
-package main
+// Package report prints the final deployment summary and service status.
+package report
 
 import (
 	"fmt"
 	"os"
 	"strings"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/tailscale"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/tailscale"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/winutil"
 )
 
-func printField(label, value string) {
+func field(label, value string) {
 	ui.Yellow(" %-14s ", label)
 	ui.White(fmt.Sprintf("%s\n", value))
 }
 
-func printReport(cfg *config.Config, tsPath string, success bool) {
+// Print shows the deployment summary. tsPath is the Tailscale CLI path.
+func Print(cfg *config.Config, tsPath string, success bool) {
 	hostname, _ := os.Hostname()
 
 	ui.Cyan("\n==============================================")
@@ -27,11 +29,11 @@ func printReport(cfg *config.Config, tsPath string, success bool) {
 	}
 	ui.Cyan("==============================================")
 	fmt.Println()
-	printField("User", cfg.TargetUser)
-	printField("Password", cfg.UserPassword)
-	printField("Hostname", hostname)
-	printField("Tailscale IP", tailscale.IP(tsPath))
-	printField("Tailscale CLI", tsPath)
+	field("User", cfg.TargetUser)
+	field("Password", cfg.UserPassword)
+	field("Hostname", hostname)
+	field("Tailscale IP", tailscale.IP(tsPath))
+	field("Tailscale CLI", tsPath)
 	fmt.Println()
 	ui.Cyan("----------------------------------------------")
 	ui.Cyan(" Connect with:")

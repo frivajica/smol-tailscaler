@@ -1,15 +1,16 @@
-package main
+// Package app orchestrates the ordered setup steps.
+package app
 
 import (
 	"fmt"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/firewall"
-	"setup-windows/internal/ssh"
-	"setup-windows/internal/tailscale"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/users"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/firewall"
+	"smol-tailscaler/internal/ssh"
+	"smol-tailscaler/internal/tailscale"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/users"
+	"smol-tailscaler/internal/winutil"
 )
 
 const totalSteps = 6
@@ -20,7 +21,12 @@ func runStep(num int, label string, fn func() error) error {
 	return fn()
 }
 
-func runSetup(cfg *config.Config) (string, error) {
+// Run executes the full setup: banner, ordered steps, service gates, and the
+// PowerShell default shell. It returns the installed Tailscale CLI path.
+func Run(cfg *config.Config) (string, error) {
+	ui.Header("Setup: SSH + Tailscale")
+	fmt.Printf("Target user: %s\n", cfg.TargetUser)
+
 	if err := runStep(1, "OpenSSH Server", ssh.EnsureInstalled); err != nil {
 		return "", fmt.Errorf("OpenSSH install: %w", err)
 	}

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/winutil"
 )
 
 // Path returns the installed tailscale.exe path, or "" if not found.

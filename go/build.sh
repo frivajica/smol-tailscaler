@@ -105,26 +105,15 @@ if [ -n "$NOSIGN" ]; then
   echo "Signing skipped (-nosign)."
 else
   # Plain `./build.sh` always produces a signed binary: generate a self-signed
-  # code-signing cert on first build if none exists.
+  # code-signing cert on first build if none exists. make-signing-cert.sh is
+  # the single source for cert generation and prints the password it used so
+  # signing and generation can never drift.
   if [ -z "$SIGNCERT" ]; then
     SIGNCERT="signing/signing.pfx"
-    [ -n "$SIGNPASS" ] || SIGNPASS="changeme"
     if [ ! -f "$SIGNCERT" ]; then
       echo "No signing cert found - generating $SIGNCERT (self-signed, 3 years)..."
-      mkdir -p signing
-      openssl req -x509 -newkey rsa:2048 -sha256 -days 1095 -nodes \
-        -keyout signing/signing.key \
-        -out signing/signing.crt \
-        -subj "/CN=smol-tailscaler" \
-        -addext "extendedKeyUsage=codeSigning" \
-        -addext "keyUsage=digitalSignature"
-      openssl pkcs12 -export \
-        -out "$SIGNCERT" \
-        -inkey signing/signing.key \
-        -in signing/signing.crt \
-        -passout "pass:$SIGNPASS"
-      echo "Generated: $SIGNCERT (password: $SIGNPASS)"
     fi
+    SIGNPASS="$(./make-signing-cert.sh signing "$SIGNPASS")"
   elif [ ! -f "$SIGNCERT" ]; then
     echo "ERROR: signing cert not found: $SIGNCERT" >&2
     exit 1

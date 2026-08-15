@@ -7,10 +7,13 @@ import (
 	"strconv"
 	"strings"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/users"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/app"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/report"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/users"
+	"smol-tailscaler/internal/verify"
+	"smol-tailscaler/internal/winutil"
 )
 
 // Embedded secrets - injected at build time via -ldflags (see build.sh).
@@ -65,22 +68,20 @@ func main() {
 	}
 
 	if verifyMode {
-		exit(verify(cfg))
+		exit(verify.Run(cfg))
 	}
 
 	if err := resolveSecrets(cfg); err != nil {
 		fatal("%s", err)
 	}
 
-	banner(cfg)
-
-	tsPath, err := runSetup(cfg)
+	tsPath, err := app.Run(cfg)
 	if err != nil {
-		printReport(cfg, tsPath, false)
+		report.Print(cfg, tsPath, false)
 		fatal("Setup failed: %s", err)
 	}
 
-	printReport(cfg, tsPath, true)
+	report.Print(cfg, tsPath, true)
 	exit(0)
 }
 
@@ -139,11 +140,6 @@ func resolveSecrets(cfg *config.Config) error {
 		cfg.TsAuthKey = secret
 	}
 	return nil
-}
-
-func banner(cfg *config.Config) {
-	ui.Header("Setup: SSH + Tailscale")
-	fmt.Printf("Target user: %s\n", cfg.TargetUser)
 }
 
 func fatal(format string, args ...any) {

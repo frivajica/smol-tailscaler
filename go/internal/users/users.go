@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"setup-windows/internal/config"
-	"setup-windows/internal/ui"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/config"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/winutil"
 )
 
 // ValidName reports whether name is safe to interpolate into PowerShell

@@ -5,8 +5,8 @@ package firewall
 import (
 	"os"
 
-	"setup-windows/internal/ui"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/winutil"
 )
 
 const ensureScriptPath = `C:\ProgramData\Tailscaler\ensure.ps1`

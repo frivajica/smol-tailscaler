@@ -12,8 +12,8 @@ import (
 	"runtime"
 	"strings"
 
-	"setup-windows/internal/ui"
-	"setup-windows/internal/winutil"
+	"smol-tailscaler/internal/ui"
+	"smol-tailscaler/internal/winutil"
 )
 
 // ConfigPath is where the OpenSSH server config lives.
