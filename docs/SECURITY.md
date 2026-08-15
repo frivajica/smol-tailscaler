@@ -17,8 +17,8 @@ The binary is still signed with your cert — add `-nosign` if you don't want th
 ## Signing certificate
 
 `build.sh` auto-generates a self-signed code-signing cert
-(`go/signing/signing.pfx`) and signs every build. The PFX password is generated
-randomly on first build and stored next to the cert in `go/signing/.pass`
+(`signing/signing.pfx`) and signs every build. The PFX password is generated
+randomly on first build and stored next to the cert in `signing/.pass`
 (chmod 700, gitignored); later builds reuse it automatically. Override with
 `-signpass` or `SIGN_PASSWORD` env. Treat the cert + its password as a
 credential:
@@ -26,7 +26,7 @@ credential:
 - Anyone with the PFX can sign binaries that your machines will trust (you
   imported the cert into **Trusted Root** and **Trusted Publishers** on each
   target machine).
-- `go/signing/` is gitignored — never commit it.
+- `signing/` is gitignored — never commit it.
 - Self-signed means per-machine trust, not reputation — **Smart App Control
   may still block the binary** depending on its reputation model. Fall back to
   turning SAC off in a throwaway VM.

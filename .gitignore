@@ -5,8 +5,8 @@
 dist/
 
 # Go build artifacts
-go/setup.exe
-go/setup-windows
+setup.exe
+setup-windows
 
 # Signing certs - never commit (contains private key + password)
-go/signing/
+signing/

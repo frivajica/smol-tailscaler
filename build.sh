@@ -9,16 +9,12 @@ SIGNCERT=""
 SIGNPASS=""
 NOSIGN=""
 
-# Load secrets from .env — prefer build dir, fall back to repo root.
-# .env provides TS_AUTH_KEY and (optionally) USER_PASSWORD / USER_NAME.
-for env_file in .env ../.env; do
-  if [ -f "$env_file" ]; then
-    set -a
-    source "$env_file"
-    set +a
-    break
-  fi
-done
+# Load secrets from .env (TS_AUTH_KEY and optionally USER_PASSWORD / USER_NAME).
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
 
 PASSWORD="${USER_PASSWORD:-}"
 USERNAME="${USER_NAME:-}"

@@ -18,23 +18,21 @@ Everything is idempotent — safe to re-run, works on a fresh or broken machine.
 ## Build (on Mac/Linux)
 
 ```bash
-cd go
-cp ../.env.example .env        # set TS_AUTH_KEY (+ optional USER_PASSWORD, USER_NAME)
+cp .env.example .env        # set TS_AUTH_KEY (+ optional USER_PASSWORD, USER_NAME)
 ./build.sh -password "TempPass123"   # embed a temp password (optional)
 ```
 
 Secrets resolve as: **CLI flag > `.env` > prompt at runtime**.
-Output: `go/dist/setup.exe`
+Output: `dist/setup.exe`
 
 ## Code-sign the binary (automatic)
 
 Windows 11 **Smart App Control** blocks unsigned binaries like `setup.exe`.
 `build.sh` now does it all for you — on the first build it generates a
-self-signed code-signing cert (`go/signing/signing.pfx`), then builds and
+self-signed code-signing cert (`signing/signing.pfx`), then builds and
 signs `setup.exe` automatically. No extra steps:
 
 ```bash
-cd go
 ./build.sh
 ```
 
@@ -50,7 +48,7 @@ Import-Certificate -FilePath C:\signing.crt -CertStoreLocation Cert:\LocalMachin
 
 Self-signed = trust per-machine, not "reputation". Smart App Control may still
 block it depending on its reputation model — fall back to turning SAC off in a
-throwaway VM. Never commit `go/signing/` (private key + password).
+throwaway VM. Never commit `signing/` (private key + password).
 
 ## Run (on Windows)
 
@@ -75,9 +73,9 @@ Add your SSH key, then disable password auth — see `docs/SECURITY.md`.
 
 | Path | Purpose |
 |---|---|
-| `go/` | Go source + `build.sh` (`make-signing-cert.sh` = optional cert regen) |
-| `go/dist/setup.exe` | Built binary |
-| `go/run-setup.bat` | Optional VM runner |
+| `./` | Go source + `build.sh` (`make-signing-cert.sh` = optional cert regen) |
+| `dist/setup.exe` | Built binary |
+| `run-setup.bat` | Optional VM runner |
 | `legacy/` | Original PowerShell version (reference) |
 | `docs/` | Security notes + Hyper-V testing guide |
 | `.env.example` | `TS_AUTH_KEY`, `USER_PASSWORD`, `USER_NAME` template |

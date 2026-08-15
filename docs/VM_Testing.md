@@ -57,7 +57,7 @@ Remove-Item D:\vms\testwin-child.vhdx
 
 | Method | Best for | Command / use |
 |---|---|---|
-| **HTTP server** | Quick one-off | Mac (from `go/`): `python3 -m http.server 8000` → VM: `http://<mac-ip>:8000/dist/setup.exe` |
+| **HTTP server** | Quick one-off | Mac (repo root): `python3 -m http.server 8000` → VM: `http://<mac-ip>:8000/dist/setup.exe` |
 | **Host shared folder** | Testing loops | Host: `New-SmbShare -Name "vmshare" -Path "C:\vm-share" -FullAccess "Everyone"` → VM: `\\<host-ip>\vmshare` |
 | **Enhanced Session Mode** | Clipboard + drive redirection | Hyper-V Manager → connect with Enhanced Session Mode |
 
