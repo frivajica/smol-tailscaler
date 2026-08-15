@@ -24,7 +24,7 @@ const opensshReleaseAPI = "https://api.github.com/repos/PowerShell/Win32-OpenSSH
 
 // dismTimeout bounds the Windows Update download; a longer stall is treated as
 // a dead Windows Update and the GitHub fallback is used instead.
-const dismTimeout = 15 * time.Minute
+const dismTimeout = 60 * time.Minute
 
 // queryTimeout bounds the Windows Update catalog scan; a longer stall is
 // treated as dead Windows Update and the GitHub fallback is used instead.
