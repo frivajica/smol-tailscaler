@@ -57,11 +57,19 @@ Remove-Item D:\vms\testwin-child.vhdx
 
 | Method | Best for | Command / use |
 |---|---|---|
-| **HTTP server** | Quick one-off | Mac (repo root): `python3 -m http.server 8000` → VM: `http://<mac-ip>:8000/dist/setup.exe` |
+| **HTTP server** | Quick one-off | Mac: `python3 -m http.server 8000 --directory dist` → VM: `http://<mac-ip>:8000/setup.exe` |
+| **Cloudflare quick tunnel** | Remote download (one-off) | Mac: `brew install cloudflared && cloudflared tunnel --protocol http2 --url http://localhost:8000` → share the `https://*.trycloudflare.com` URL (server first: `python3 -m http.server 8000 --directory dist`) |
 | **Host shared folder** | Testing loops | Host: `New-SmbShare -Name "vmshare" -Path "C:\vm-share" -FullAccess "Everyone"` → VM: `\\<host-ip>\vmshare` |
 | **Enhanced Session Mode** | Clipboard + drive redirection | Hyper-V Manager → connect with Enhanced Session Mode |
 
 Use the Mac's Tailscale IP (or LAN IP if the VM has no Tailscale yet).
+
+**Cloudflare quick tunnel tips** — on networks that block outbound QUIC
+(UDP 7844), cloudflared hangs retrying and the URL returns `530`; pass
+`--protocol http2` to force the fallback transport. Quick-tunnel URLs are
+random and ephemeral: killing the cloudflared process kills the link. Serve
+`signing/signing.crt` from the same folder so the target machine can trust the
+cert before running `setup.exe` (see `docs/SECURITY.md`).
 
 ## Caveats
 

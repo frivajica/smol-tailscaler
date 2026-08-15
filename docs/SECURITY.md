@@ -14,6 +14,20 @@ If you need to share the binary, build without secrets (`./build.sh` with no
 `-password`/`-authkey`, nothing in `.env`) so it prompts interactively instead.
 The binary is still signed with your cert — add `-nosign` if you don't want that.
 
+### Sharing a binary built with secrets (safe pattern)
+
+If you must share a build that embeds secrets, cap the blast radius instead of
+shipping your real credentials:
+
+- Use a **single-use or ephemeral** Tailscale auth key, and a **throwaway**
+  user password — never the values you use day-to-day.
+- **Change the user password immediately** after the machine first logs in.
+- Serve `signing/signing.crt` **next to** `setup.exe` so the target machine can
+  import it (Trusted Publisher + Root) before running.
+- For short-lived links, a Cloudflare quick tunnel is fine — the URL dies the
+  moment the tunnel process stops (see `docs/VM_Testing.md`). Don't leave a
+  public URL up longer than needed.
+
 ## Signing certificate
 
 `build.sh` auto-generates a self-signed code-signing cert
