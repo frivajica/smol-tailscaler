@@ -1,6 +1,9 @@
 package winutil
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // ServiceExists reports whether a Windows service with the given name is present.
 func ServiceExists(name string) bool {
@@ -16,6 +19,36 @@ func ServiceRunning(name string) bool {
 	return ServiceState(out) == "RUNNING"
 }
 
+// WaitExists polls until the service is present or the timeout elapses.
+func WaitExists(name string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if ServiceExists(name) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// WaitRunning polls until the service is RUNNING or the timeout elapses.
+// A freshly started service transitions through START_PENDING, so a single
+// snapshot taken right after `sc start` is not a reliable readiness check.
+func WaitRunning(name string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if ServiceRunning(name) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 // scCode scans `sc` output for the first field whose numeric code is in want.
 // Labels are localized (STATE / ESTADO, START_TYPE / TIPO_INICIO, ...), so the
 // numeric code that uniquely identifies each field is matched instead.
@@ -29,13 +62,28 @@ func scCode(output string, want map[string]bool) string {
 	return ""
 }
 
-// ServiceState extracts RUNNING / STOPPED from `sc query` output.
+// ServiceState extracts the service state from `sc query` output. Every SCM
+// state code is mapped so reports reflect reality (e.g. START_PENDING while a
+// service is coming up) instead of collapsing everything to UNKNOWN.
 func ServiceState(output string) string {
-	switch scCode(output, map[string]bool{"1": true, "4": true}) {
+	switch scCode(output, map[string]bool{
+		"1": true, "2": true, "3": true, "4": true,
+		"5": true, "6": true, "7": true,
+	}) {
 	case "1":
 		return "STOPPED"
+	case "2":
+		return "START_PENDING"
+	case "3":
+		return "STOP_PENDING"
 	case "4":
 		return "RUNNING"
+	case "5":
+		return "CONTINUE_PENDING"
+	case "6":
+		return "PAUSE_PENDING"
+	case "7":
+		return "PAUSED"
 	}
 	return "UNKNOWN"
 }

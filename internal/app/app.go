@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"smol-tailscaler/internal/config"
 	"smol-tailscaler/internal/firewall"
@@ -53,11 +54,13 @@ func Run(cfg *config.Config) (string, error) {
 	runStep(6, "Firewall + services", firewall.Ensure)
 
 	// Idempotency gate: setup only reports success when the services it
-	// configured are actually running.
-	if !winutil.ServiceRunning("sshd") {
+	// configured are actually running. A freshly started service transitions
+	// through START_PENDING first, so wait for readiness rather than judging a
+	// single snapshot taken right after `sc start`.
+	if !winutil.WaitRunning("sshd", 60*time.Second) {
 		return tsPath, fmt.Errorf("sshd is not RUNNING after setup - OpenSSH install may have failed")
 	}
-	if !winutil.ServiceRunning("Tailscale") {
+	if !winutil.WaitRunning("Tailscale", 15*time.Second) {
 		ui.Warn("Tailscale service is not RUNNING after setup")
 	}
 

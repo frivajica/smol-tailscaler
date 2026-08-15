@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"smol-tailscaler/internal/ui"
 	"smol-tailscaler/internal/winutil"
@@ -20,6 +21,18 @@ import (
 const ConfigPath = `C:\ProgramData\ssh\sshd_config`
 
 const opensshReleaseAPI = "https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest"
+
+// dismTimeout bounds the Windows Update download; a longer stall is treated as
+// a dead Windows Update and the GitHub fallback is used instead.
+const dismTimeout = 15 * time.Minute
+
+// queryTimeout bounds the Windows Update catalog scan; a longer stall is
+// treated as dead Windows Update and the GitHub fallback is used instead.
+const queryTimeout = 5 * time.Minute
+
+// serviceAppearTimeout bounds how long we wait for DISM to actually register
+// the sshd service after reporting success (reboot-pending editions never do).
+const serviceAppearTimeout = 30 * time.Second
 
 type githubRelease struct {
 	Assets []struct {
@@ -37,13 +50,31 @@ func EnsureInstalled() error {
 	}
 
 	ui.Cyan("  Installing via Windows Update (DISM)...\n")
-	capOut, err := winutil.RunPS("(Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*').Name")
-	if err == nil && capOut != "" {
-		if _, err := winutil.RunPS(fmt.Sprintf("Add-WindowsCapability -Online -Name '%s'", capOut)); err == nil && winutil.ServiceExists("sshd") {
+	ui.Cyan("  Querying Windows Update for the OpenSSH Server capability; this can take a minute or two.\n")
+	capOut, capErr := winutil.RunPSWithProgress(
+		"(Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*').Name",
+		"Windows Update query",
+		queryTimeout,
+		func(elapsed string) { ui.Cyan("  %s\n", elapsed) },
+	)
+	if capErr != nil {
+		ui.Cyan("  Windows Update query failed (%s); trying GitHub...\n", capErr)
+	} else if capOut != "" {
+		ui.Cyan("  Found OpenSSH Server capability; installing via DISM (download may take several minutes).\n")
+		_, dismErr := winutil.RunPSWithProgress(
+			fmt.Sprintf("Add-WindowsCapability -Online -Name '%s'", capOut),
+			"DISM install",
+			dismTimeout,
+			func(elapsed string) { ui.Cyan("  %s\n", elapsed) },
+		)
+		if dismErr != nil {
+			ui.Cyan("  DISM did not succeed (%s); trying GitHub...\n", dismErr)
+		} else if winutil.WaitExists("sshd", serviceAppearTimeout) {
 			ui.Ok("OpenSSH Server installed via DISM")
 			return nil
+		} else {
+			ui.Cyan("  DISM reported success but sshd is missing (reboot pending or unsupported edition); trying GitHub...\n")
 		}
-		ui.Cyan("  DISM reported success but sshd is missing (reboot pending or unsupported edition); trying GitHub...\n")
 	}
 
 	ui.Cyan("  Falling back to GitHub release...\n")

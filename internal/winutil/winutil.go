@@ -3,6 +3,7 @@
 package winutil
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,6 +44,56 @@ func RunCmdOK(name string, args ...string) error {
 // RunPS runs a PowerShell script snippet.
 func RunPS(script string) (string, error) {
 	return RunCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+}
+
+// progressTick controls how often runWithProgress reports elapsed time.
+// Exposed as a var so tests can shorten it.
+var progressTick = 15 * time.Second
+
+// RunPSWithProgress runs a PowerShell script snippet whose output is captured
+// (and therefore invisible on screen), reporting elapsed time via progress
+// while it runs and killing the process tree if it exceeds timeout. Long steps
+// like a DISM Windows Update download would otherwise look hung for minutes.
+func RunPSWithProgress(script, what string, timeout time.Duration, progress func(elapsed string)) (string, error) {
+	return runWithProgress("powershell", []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script}, what, timeout, progress)
+}
+
+func runWithProgress(name string, args []string, what string, timeout time.Duration, progress func(elapsed string)) (string, error) {
+	cmd := exec.Command(name, args...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	start := time.Now()
+	ticker := time.NewTicker(progressTick)
+	defer ticker.Stop()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case err := <-done:
+			return strings.TrimSpace(buf.String()), err
+		case <-timer.C:
+			// Kill the tree so a DISM child isn't orphaned when the wrapping
+			// PowerShell is terminated. Kill first (portable), then taskkill
+			// for any remaining children.
+			_ = cmd.Process.Kill()
+			_ = exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+			<-done
+			return strings.TrimSpace(buf.String()), fmt.Errorf("%s did not finish within %s", what, timeout)
+		case <-ticker.C:
+			if progress != nil {
+				progress(fmt.Sprintf("still running (%s elapsed)...", time.Since(start).Round(time.Second)))
+			}
+		}
+	}
 }
 
 // RunPSEnv runs a PowerShell script snippet with extra KEY=VALUE entries set

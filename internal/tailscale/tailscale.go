@@ -196,13 +196,10 @@ func repairState() error {
 	if err := winutil.RunCmdOK("sc.exe", "start", "Tailscale"); err != nil {
 		return fmt.Errorf("starting Tailscale service: %w", err)
 	}
-	for i := 0; i < 30; i++ {
-		if winutil.ServiceRunning("Tailscale") {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
+	if !winutil.WaitRunning("Tailscale", 15*time.Second) {
+		return fmt.Errorf("Tailscale service did not reach RUNNING state after repair")
 	}
-	return fmt.Errorf("Tailscale service did not reach RUNNING state after repair")
+	return nil
 }
 
 // IP fetches the node's Tailscale IPv4 address.
