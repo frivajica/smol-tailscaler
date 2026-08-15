@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"setup-windows/internal/config"
+	"setup-windows/internal/tailscale"
 	"setup-windows/internal/ui"
 	"setup-windows/internal/winutil"
 )
@@ -14,7 +16,7 @@ func printField(label, value string) {
 	ui.White(fmt.Sprintf("%s\n", value))
 }
 
-func printReport(tsPath string, success bool) {
+func printReport(cfg *config.Config, tsPath string, success bool) {
 	hostname, _ := os.Hostname()
 
 	ui.Cyan("\n==============================================")
@@ -25,15 +27,15 @@ func printReport(tsPath string, success bool) {
 	}
 	ui.Cyan("==============================================")
 	fmt.Println()
-	printField("User", targetUser)
-	printField("Password", userPassword)
+	printField("User", cfg.TargetUser)
+	printField("Password", cfg.UserPassword)
 	printField("Hostname", hostname)
-	printField("Tailscale IP", tailscaleIP(tsPath))
+	printField("Tailscale IP", tailscale.IP(tsPath))
 	printField("Tailscale CLI", tsPath)
 	fmt.Println()
 	ui.Cyan("----------------------------------------------")
 	ui.Cyan(" Connect with:")
-	fmt.Printf("   ssh %s@<%s>\n", targetUser, "tailscale-ip")
+	fmt.Printf("   ssh %s@<%s>\n", cfg.TargetUser, "tailscale-ip")
 	ui.Cyan("----------------------------------------------")
 	fmt.Println()
 

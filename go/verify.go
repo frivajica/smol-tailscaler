@@ -5,11 +5,15 @@ import (
 	"os"
 	"strings"
 
+	"setup-windows/internal/config"
+	"setup-windows/internal/ssh"
+	"setup-windows/internal/tailscale"
 	"setup-windows/internal/ui"
+	"setup-windows/internal/users"
 	"setup-windows/internal/winutil"
 )
 
-func verify() int {
+func verify(cfg *config.Config) int {
 	ui.Header("Verify: SSH + Tailscale state")
 
 	failed := false
@@ -39,10 +43,10 @@ func verify() int {
 	}
 
 	// 2. sshd_config
-	if winutil.FileExists(sshdConfigPath) {
-		data, err := os.ReadFile(sshdConfigPath)
+	if winutil.FileExists(ssh.ConfigPath) {
+		data, err := os.ReadFile(ssh.ConfigPath)
 		content := strings.ToLower(string(data))
-		check("sshd_config present", err == nil, sshdConfigPath)
+		check("sshd_config present", err == nil, ssh.ConfigPath)
 		check("PubkeyAuthentication enabled", strings.Contains(content, "pubkeyauthentication yes"), "")
 		check("PasswordAuthentication enabled", strings.Contains(content, "passwordauthentication yes"), "")
 	} else {
@@ -61,23 +65,23 @@ func verify() int {
 	check("Default shell is PowerShell", err == nil && strings.Contains(strings.ToLower(out), "powershell"), strings.TrimSpace(out))
 
 	// 4. User + admin membership
-	if userExists(targetUser) {
-		check("User "+targetUser, true, "")
+	if users.Exists(cfg.TargetUser) {
+		check("User "+cfg.TargetUser, true, "")
 		group, err := winutil.AdminGroupName()
-		inGroup := err == nil && winutil.RunCmdOK("net", "localgroup", group, targetUser) == nil
-		check(targetUser+" in admin group", inGroup, "group: "+group)
+		inGroup := err == nil && winutil.RunCmdOK("net", "localgroup", group, cfg.TargetUser) == nil
+		check(cfg.TargetUser+" in admin group", inGroup, "group: "+group)
 	} else {
-		check("User "+targetUser, false, "not found")
+		check("User "+cfg.TargetUser, false, "not found")
 	}
 
 	// 5. Tailscale
-	tsPath := findTailscalePath()
+	tsPath := tailscale.Path()
 	if tsPath == "" {
 		check("Tailscale installed", false, "not found")
 	} else {
 		check("Tailscale installed", true, tsPath)
 		if err := winutil.RunCmdOK(tsPath, "status"); err == nil {
-			ip := tailscaleIP(tsPath)
+			ip := tailscale.IP(tsPath)
 			check("Tailscale connected", ip != "<unavailable>" && ip != "", "IP: "+ip)
 		} else {
 			check("Tailscale connected", false, "not logged in")

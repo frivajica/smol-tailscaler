@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"setup-windows/internal/config"
 	"setup-windows/internal/ui"
+	"setup-windows/internal/users"
 	"setup-windows/internal/winutil"
 )
 
@@ -48,8 +50,14 @@ func main() {
 	if targetUser == "" {
 		targetUser = "admin"
 	}
-	if !validUsername(targetUser) {
+	if !users.ValidName(targetUser) {
 		fatal("invalid user name %q: only letters, digits, '.', '_' and '-' are allowed", targetUser)
+	}
+
+	cfg := &config.Config{
+		TargetUser:   targetUser,
+		UserPassword: userPassword,
+		TsAuthKey:    tsAuthKey,
 	}
 
 	if !winutil.IsAdmin() {
@@ -57,22 +65,22 @@ func main() {
 	}
 
 	if verifyMode {
-		exit(verify())
+		exit(verify(cfg))
 	}
 
-	if err := resolveSecrets(); err != nil {
+	if err := resolveSecrets(cfg); err != nil {
 		fatal("%s", err)
 	}
 
-	banner()
+	banner(cfg)
 
-	tsPath, err := runSetup()
+	tsPath, err := runSetup(cfg)
 	if err != nil {
-		printReport(tsPath, false)
+		printReport(cfg, tsPath, false)
 		fatal("Setup failed: %s", err)
 	}
 
-	printReport(tsPath, true)
+	printReport(cfg, tsPath, true)
 	exit(0)
 }
 
@@ -109,18 +117,18 @@ func exitPause() {
 }
 
 // resolveSecrets fills in any missing values, prompting unless silent mode.
-func resolveSecrets() error {
-	if userPassword == "" {
+func resolveSecrets(cfg *config.Config) error {
+	if cfg.UserPassword == "" {
 		if silentMode {
 			return fmt.Errorf("no user password provided and -silent is set")
 		}
-		secret, err := ui.PromptSecret("Password for user '" + targetUser + "'")
+		secret, err := ui.PromptSecret("Password for user '" + cfg.TargetUser + "'")
 		if err != nil {
 			return err
 		}
-		userPassword = secret
+		cfg.UserPassword = secret
 	}
-	if tsAuthKey == "" {
+	if cfg.TsAuthKey == "" {
 		if silentMode {
 			return fmt.Errorf("no Tailscale auth key provided and -silent is set")
 		}
@@ -128,14 +136,14 @@ func resolveSecrets() error {
 		if err != nil {
 			return err
 		}
-		tsAuthKey = secret
+		cfg.TsAuthKey = secret
 	}
 	return nil
 }
 
-func banner() {
+func banner(cfg *config.Config) {
 	ui.Header("Setup: SSH + Tailscale")
-	fmt.Printf("Target user: %s\n", targetUser)
+	fmt.Printf("Target user: %s\n", cfg.TargetUser)
 }
 
 func fatal(format string, args ...any) {

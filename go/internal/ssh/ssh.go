@@ -1,4 +1,5 @@
-package main
+// Package ssh installs and configures the OpenSSH Server.
+package ssh
 
 import (
 	"archive/zip"
@@ -11,8 +12,12 @@ import (
 	"runtime"
 	"strings"
 
+	"setup-windows/internal/ui"
 	"setup-windows/internal/winutil"
 )
+
+// ConfigPath is where the OpenSSH server config lives.
+const ConfigPath = `C:\ProgramData\ssh\sshd_config`
 
 const opensshReleaseAPI = "https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest"
 
@@ -23,7 +28,36 @@ type githubRelease struct {
 	} `json:"assets"`
 }
 
-func installOpenSSHFromGitHub() error {
+// EnsureInstalled ensures the OpenSSH Server service exists, installing via
+// DISM with a GitHub release fallback when Windows Update is unavailable.
+func EnsureInstalled() error {
+	if winutil.ServiceExists("sshd") {
+		ui.Ok("OpenSSH Server already installed")
+		return nil
+	}
+
+	ui.Cyan("  Installing via Windows Update (DISM)...\n")
+	capOut, err := winutil.RunPS("(Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*').Name")
+	if err == nil && capOut != "" {
+		if _, err := winutil.RunPS(fmt.Sprintf("Add-WindowsCapability -Online -Name '%s'", capOut)); err == nil && winutil.ServiceExists("sshd") {
+			ui.Ok("OpenSSH Server installed via DISM")
+			return nil
+		}
+		ui.Cyan("  DISM reported success but sshd is missing (reboot pending or unsupported edition); trying GitHub...\n")
+	}
+
+	ui.Cyan("  Falling back to GitHub release...\n")
+	if err := installFromGitHub(); err != nil {
+		return err
+	}
+	if !winutil.ServiceExists("sshd") {
+		return fmt.Errorf("OpenSSH installed but sshd service is still missing")
+	}
+	ui.Ok("OpenSSH Server installed from GitHub")
+	return nil
+}
+
+func installFromGitHub() error {
 	arch := "Win64"
 	if runtime.GOARCH == "386" {
 		arch = "Win32"
@@ -94,6 +128,53 @@ func fetchGitHubRelease() (*githubRelease, error) {
 		return nil, err
 	}
 	return &rel, nil
+}
+
+// WriteConfig applies a clean base config. Password auth is enabled so the
+// user can log in and add their key manually (disable it afterwards).
+func WriteConfig() error {
+	content := `Port 22
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication yes
+PermitEmptyPasswords no
+Subsystem sftp sftp-server.exe
+`
+	if err := os.MkdirAll(`C:\ProgramData\ssh`, 0); err != nil {
+		return err
+	}
+
+	// The DISM/GitHub installer locks sshd_config down with SYSTEM-only ACLs
+	// (possibly including Deny ACEs). Take ownership and grant write access via
+	// SIDs so the overwrite below can't hit "Access denied".
+	if winutil.FileExists(ConfigPath) {
+		winutil.RunCmdOK("attrib", "-r", ConfigPath)
+		winutil.RunCmdOK("takeown", "/f", ConfigPath)
+		if out, err := winutil.RunCmd("icacls", ConfigPath, "/reset"); err != nil {
+			ui.Gray("  note: icacls reset: %s\n", strings.TrimSpace(out))
+		}
+		if out, err := winutil.RunCmd("icacls", ConfigPath, "/inheritance:r", "/grant", "*S-1-5-18:(F)", "/grant", "*S-1-5-32-544:(F)"); err != nil {
+			ui.Gray("  note: icacls grant: %s\n", strings.TrimSpace(out))
+		}
+	}
+	if err := os.WriteFile(ConfigPath, []byte(content), 0); err != nil {
+		// Fallback: PowerShell Set-Content runs in the already-elevated
+		// session and often succeeds where os.WriteFile hits ACL issues.
+		ps := fmt.Sprintf("Set-Content -Path '%s' -Value @'%s'@ -Encoding ascii", ConfigPath, content)
+		if _, perr := winutil.RunPS(ps); perr != nil {
+			return fmt.Errorf("writing sshd_config: %w (PowerShell fallback: %v)", err, perr)
+		}
+	}
+	ui.Ok("sshd_config written")
+	return nil
+}
+
+// SetDefaultShell makes OpenSSH launch PowerShell for interactive sessions
+// instead of cmd.exe via the DefaultShell registry value.
+func SetDefaultShell() error {
+	const shell = `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
+	script := fmt.Sprintf("New-Item -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Force | Out-Null; Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name 'DefaultShell' -Value '%s' -Force", shell)
+	return winutil.RunCmdOK("powershell", "-NoProfile", "-Command", script)
 }
 
 // zipRootPrefix returns the top-level directory all entries share, or "" if

@@ -1,4 +1,6 @@
-package main
+// Package firewall opens port 22, makes the SSH/Tailscale services persistent,
+// and installs self-healing scheduled tasks.
+package firewall
 
 import (
 	"os"
@@ -9,18 +11,18 @@ import (
 
 const ensureScriptPath = `C:\ProgramData\Tailscaler\ensure.ps1`
 
-func stepFirewallAndServices() {
-	ui.Step(6, 6, "Firewall + services")
-
-	ensureFirewallRule()
+// Ensure applies the firewall rule, service persistence, and self-healing.
+func Ensure() error {
+	ensureRule()
 	ensureServicePersists("sshd")
 	ensureServicePersists("Tailscale")
 	ensureSelfHealingTasks()
+	return nil
 }
 
-// ensureFirewallRule allows inbound SSH on port 22, creating the rule if the
-// check (or the rule itself) is missing.
-func ensureFirewallRule() {
+// ensureRule allows inbound SSH on port 22, creating the rule if the check
+// (or the rule itself) is missing.
+func ensureRule() {
 	if winutil.RunCmdOK("netsh", "advfirewall", "firewall", "show", "rule", "name=OpenSSH-Server-In-TCP") != nil {
 		if err := winutil.RunCmdOK("netsh", "advfirewall", "firewall", "add", "rule",
 			"name=OpenSSH-Server-In-TCP", "dir=in", "action=allow", "protocol=TCP", "localport=22"); err != nil {

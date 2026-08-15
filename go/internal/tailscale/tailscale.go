@@ -1,4 +1,6 @@
-package main
+// Package tailscale installs, configures, and authenticates the Tailscale
+// client with a locked-down, tray-less, unattended setup.
+package tailscale
 
 import (
 	"fmt"
@@ -8,11 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"setup-windows/internal/config"
 	"setup-windows/internal/ui"
 	"setup-windows/internal/winutil"
 )
 
-func findTailscalePath() string {
+// Path returns the installed tailscale.exe path, or "" if not found.
+func Path() string {
 	candidates := []string{
 		`C:\Program Files\Tailscale\tailscale.exe`,
 		`C:\Program Files (x86)\Tailscale\tailscale.exe`,
@@ -25,16 +29,16 @@ func findTailscalePath() string {
 	return ""
 }
 
-func stepTailscale() (string, error) {
-	ui.Step(4, 6, "Tailscale")
-
-	tsPath := findTailscalePath()
+// Ensure installs Tailscale if missing, applies lockdown policies, and hides
+// the tray GUI. It returns the installed tailscale.exe path.
+func Ensure() (string, error) {
+	tsPath := Path()
 	if tsPath == "" {
 		ui.Cyan("  Tailscale not found, downloading and installing...\n")
-		if err := installTailscale(); err != nil {
+		if err := install(); err != nil {
 			return "", err
 		}
-		tsPath = findTailscalePath()
+		tsPath = Path()
 		if tsPath == "" {
 			return "", fmt.Errorf("Tailscale installed but executable not found")
 		}
@@ -43,16 +47,13 @@ func stepTailscale() (string, error) {
 
 	// Policies must be active before the connection comes up so users can't
 	// flip shields-up, disconnect, or switch exit nodes from the tray GUI.
-	applyTailscalePolicies()
-	hideTailscaleTray()
+	applyPolicies()
+	hideTray()
 
-	if err := tailscaleAuth(tsPath); err != nil {
-		return "", err
-	}
 	return tsPath, nil
 }
 
-func installTailscale() error {
+func install() error {
 	arch := "amd64"
 	if runtime.GOARCH == "386" {
 		arch = "386"
@@ -73,13 +74,13 @@ func installTailscale() error {
 	return nil
 }
 
-const tailscaleStartupLnk = `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Tailscale.lnk`
+const startupLnk = `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Tailscale.lnk`
 
-// applyTailscalePolicies locks down the Tailscale client so local users can't
-// change settings that affect connectivity. Values are REG_SZ under the
-// HKLM policies key and are enforced daemon-side (they win over GUI + CLI,
-// and the GUI hides the matching menu items). Requires elevation.
-func applyTailscalePolicies() {
+// applyPolicies locks down the Tailscale client so local users can't change
+// settings that affect connectivity. Values are REG_SZ under the HKLM policies
+// key and are enforced daemon-side (they win over GUI + CLI, and the GUI hides
+// the matching menu items). Requires elevation.
+func applyPolicies() {
 	base := "New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Force | Out-Null"
 	script := base + `
 Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'AllowIncomingConnections' -Value 'always' -Type String -Force
@@ -94,16 +95,16 @@ Restart-Service -Name 'Tailscale' -Force -ErrorAction SilentlyContinue`
 	}
 }
 
-// hideTailscaleTray removes the tray auto-start shortcut, kills any running
-// GUI, and registers silent SYSTEM scheduled tasks that re-remove the shortcut
-// after Tailscale updates recreate it. All steps swallow errors so other users
-// are never bothered by visible output.
-func hideTailscaleTray() {
-	os.Remove(tailscaleStartupLnk)
+// hideTray removes the tray auto-start shortcut, kills any running GUI, and
+// registers silent SYSTEM scheduled tasks that re-remove the shortcut after
+// Tailscale updates recreate it. All steps swallow errors so other users are
+// never bothered by visible output.
+func hideTray() {
+	os.Remove(startupLnk)
 	winutil.RunCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
 
 	removeCmd := "powershell -NoProfile -WindowStyle Hidden -Command \"Remove-Item -LiteralPath '" +
-		tailscaleStartupLnk + "' -Force -ErrorAction SilentlyContinue\""
+		startupLnk + "' -Force -ErrorAction SilentlyContinue\""
 	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray", "/tr", removeCmd,
 		"/sc", "onlogon", "/ru", "SYSTEM", "/rl", "highest", "/f")
 	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray Daily", "/tr", removeCmd,
@@ -112,8 +113,12 @@ func hideTailscaleTray() {
 	ui.Ok("Tailscale tray hidden (GUI auto-start disabled)")
 }
 
-func tailscaleAuth(tsPath string) error {
-	ui.Step(5, 6, "Tailscale auth")
+// Auth connects the node with the configured auth key, or confirms an existing
+// connection, repairing a broken state store and retrying once if needed.
+func Auth(cfg *config.Config, tsPath string) error {
+	if tsPath == "" {
+		return fmt.Errorf("Tailscale is not installed")
+	}
 
 	// Right after boot the daemon may still be starting; `tailscale status`
 	// then reports "Tailscale is starting" with an error, which would look
@@ -131,17 +136,17 @@ func tailscaleAuth(tsPath string) error {
 	if err != nil {
 		ui.Gray("  tailscale status: %s\n", strings.TrimSpace(statusOut))
 		// Not connected - authenticate with the embedded/flag auth key.
-		out, upErr := winutil.RunCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended")
+		out, upErr := winutil.RunCmd(tsPath, "up", "--auth-key="+cfg.TsAuthKey, "--unattended")
 		if upErr != nil {
 			// A broken state store (failed TPM->plaintext migration or a file
 			// locked by a stale process) blocks backend start entirely. Clear
 			// the node state per Tailscale's recovery steps, then retry once.
 			if strings.Contains(strings.ToLower(out+statusOut), "state store") {
 				ui.Warn("Tailscale state store is unhealthy - resetting node state and retrying")
-				if repairErr := repairTailscaleState(); repairErr != nil {
+				if repairErr := repairState(); repairErr != nil {
 					return fmt.Errorf("Tailscale state store repair: %w", repairErr)
 				}
-				if out, retryErr := winutil.RunCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended"); retryErr != nil {
+				if out, retryErr := winutil.RunCmd(tsPath, "up", "--auth-key="+cfg.TsAuthKey, "--unattended"); retryErr != nil {
 					return fmt.Errorf("tailscale up after state reset: %w (%s)", retryErr, strings.TrimSpace(out))
 				}
 			} else {
@@ -158,10 +163,10 @@ func tailscaleAuth(tsPath string) error {
 	return nil
 }
 
-// repairTailscaleState stops the service, removes the node state files, and
-// restarts it so the backend can re-initialize cleanly. The node is then
-// re-registered with the embedded auth key.
-func repairTailscaleState() error {
+// repairState stops the service, removes the node state files, and restarts it
+// so the backend can re-initialize cleanly. The node is then re-registered
+// with the embedded auth key.
+func repairState() error {
 	winutil.RunCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
 	winutil.RunCmdOK("sc.exe", "stop", "Tailscale")
 	time.Sleep(2 * time.Second)
@@ -194,8 +199,8 @@ func repairTailscaleState() error {
 	return fmt.Errorf("Tailscale service did not reach RUNNING state after repair")
 }
 
-// tailscaleIP fetches the node's Tailscale IPv4 address.
-func tailscaleIP(tsPath string) string {
+// IP fetches the node's Tailscale IPv4 address.
+func IP(tsPath string) string {
 	if tsPath == "" {
 		return "<unavailable>"
 	}
