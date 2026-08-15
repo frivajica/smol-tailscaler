@@ -47,6 +47,9 @@ func main() {
 	if targetUser == "" {
 		targetUser = "admin"
 	}
+	if !validUsername(targetUser) {
+		fatal("invalid user name %q: only letters, digits, '.', '_' and '-' are allowed", targetUser)
+	}
 
 	if !isAdmin() {
 		relaunchAsAdmin()

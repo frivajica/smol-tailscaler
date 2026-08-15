@@ -5,6 +5,21 @@ import (
 	"strings"
 )
 
+// validUsername reports whether name is safe to interpolate into PowerShell
+// single-quoted strings. Windows allows a wider charset, but restricting to a
+// conservative set keeps the setup commands injection-free.
+func validUsername(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') && r != '.' && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func userExists(name string) bool {
 	_, err := runPS(fmt.Sprintf("Get-LocalUser -Name '%s' -ErrorAction SilentlyContinue", name))
 	return err == nil
@@ -21,18 +36,26 @@ func userDescription() string {
 func stepUser() error {
 	step(2, 6, "Admin user '"+targetUser+"'")
 
+	if !validUsername(targetUser) {
+		return fmt.Errorf("invalid user name %q: only letters, digits, '.', '_' and '-' are allowed", targetUser)
+	}
+
 	group, err := adminGroupName()
 	if err != nil {
 		return err
 	}
 	fmt.Printf("  Administrators group detected: %s\n", group)
 
+	// The password travels via $env:TS_USER_PASSWORD so it never lands in the
+	// PowerShell command line (visible via process listings) or the script.
 	if userExists(targetUser) {
-		runPS(fmt.Sprintf("Set-LocalUser -Name '%s' -Password (ConvertTo-SecureString '%s' -AsPlainText -Force)", targetUser, userPassword))
+		if _, err := runPSEnv(fmt.Sprintf("Set-LocalUser -Name '%s' -Password (ConvertTo-SecureString $env:TS_USER_PASSWORD -AsPlainText -Force)", targetUser), "TS_USER_PASSWORD="+userPassword); err != nil {
+			return fmt.Errorf("updating user password: %w", err)
+		}
 		ok("Existing user password updated")
 	} else {
-		script := fmt.Sprintf("New-LocalUser -Name '%s' -Password (ConvertTo-SecureString '%s' -AsPlainText -Force) -Description '%s' -PasswordNeverExpires", targetUser, userPassword, userDescription())
-		if _, err := runPS(script); err != nil {
+		script := fmt.Sprintf("New-LocalUser -Name '%s' -Password (ConvertTo-SecureString $env:TS_USER_PASSWORD -AsPlainText -Force) -Description '%s' -PasswordNeverExpires", targetUser, userDescription())
+		if _, err := runPSEnv(script, "TS_USER_PASSWORD="+userPassword); err != nil {
 			return fmt.Errorf("creating user: %w", err)
 		}
 		ok("User created")

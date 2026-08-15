@@ -78,8 +78,8 @@ func fetchGitHubRelease() (*githubRelease, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "setup-windows")
-	resp, err := http.DefaultClient.Do(req)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := apiClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,12 @@ func fetchGitHubRelease() (*githubRelease, error) {
 }
 
 func downloadFile(url, dest string) error {
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

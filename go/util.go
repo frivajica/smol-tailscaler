@@ -2,12 +2,25 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 )
+
+// userAgent identifies the tool to download hosts (Tailscale, GitHub).
+const userAgent = "smol-tailscaler/setup"
+
+// httpClient is used for large downloads so a dead network can't hang setup
+// forever waiting on a silent blackhole.
+var httpClient = &http.Client{Timeout: 10 * time.Minute}
+
+// apiClient is used for small metadata requests (GitHub releases); failing
+// fast here beats waiting out the long download timeout.
+var apiClient = &http.Client{Timeout: 30 * time.Second}
 
 var (
 	cCyan   = color.New(color.FgCyan).PrintfFunc()
@@ -44,6 +57,17 @@ func runCmdOK(name string, args ...string) error {
 // runPS runs a PowerShell script snippet.
 func runPS(script string) (string, error) {
 	return runCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+}
+
+// runPSEnv runs a PowerShell script snippet with extra KEY=VALUE entries set
+// on the child process environment, so secrets reach the script as $env:VAR
+// instead of being interpolated into the command line (visible in process
+// listings) or the script string itself (injection surface).
+func runPSEnv(script string, env ...string) (string, error) {
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
 }
 
 // serviceExists reports whether a Windows service with the given name is present.
