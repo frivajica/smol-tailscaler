@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 )
 
 func userExists(name string) bool {
@@ -29,9 +30,15 @@ func stepUser() error {
 		ok("User created")
 	}
 
-	if err := runCmdOK("net", "localgroup", group, targetUser, "/add"); err != nil {
+	// Idempotent: `net localgroup X user /add` fails with exit code 2 when the
+	// user is already a member, so check membership first.
+	member, _ := runPS(fmt.Sprintf("Get-LocalGroupMember -Group '%s' -Member '%s' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name", group, targetUser))
+	if strings.Contains(member, targetUser) {
+		ok("Already in " + group)
+	} else if err := runCmdOK("net", "localgroup", group, targetUser, "/add"); err != nil {
 		return fmt.Errorf("adding to %s: %w", group, err)
+	} else {
+		ok("Added to " + group)
 	}
-	ok("Added to " + group)
 	return nil
 }

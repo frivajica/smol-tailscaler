@@ -51,6 +51,15 @@ func serviceExists(name string) bool {
 	return runCmdOK("sc.exe", "query", name) == nil
 }
 
+// serviceRunning reports whether the service currently exists and is RUNNING.
+func serviceRunning(name string) bool {
+	out, err := runCmd("sc.exe", "query", name)
+	if err != nil {
+		return false
+	}
+	return serviceState(out) == "RUNNING"
+}
+
 // fileExists reports whether the path exists.
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
@@ -59,7 +68,7 @@ func fileExists(path string) bool {
 
 // isAdmin reports whether the current process has Administrator privileges.
 func isAdmin() bool {
-	script := "[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+	script := "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
 	out, err := runPS(script)
 	if err != nil {
 		return false

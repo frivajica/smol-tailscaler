@@ -63,8 +63,8 @@ Use the Mac's Tailscale IP (or LAN IP if the VM has no Tailscale yet).
 ## Caveats
 
 - **Tailscale re-auth** — reverting reverts Tailscale state; `setup.exe` re-registers the node. If "Require device approval" is on, approve a node every cycle.
-- **Home guest** — OpenSSH uses the GitHub fallback (`0x800f0950` → fallback), expected. Install Pro in the VM only to test the Windows Update path.
-- **Admin context** — `setup.exe` + verification must run as Administrator in the guest.
+- **Home guest** — DISM "succeeds" but never installs sshd (`0x800f0950`), so `setup.exe` always falls back to GitHub. **Expected and verified.** Install Pro in the VM only to test the Windows Update path.
+- **Elevation** — `setup.exe` self-elevates via UAC on double-click (or use `run-setup.bat`). `-verify` must also run elevated.
 - **Snapshots on a different disk** — keep checkpoints/VHDX off the OS disk (performance/isolation).
 - **Nested virtualization** — only needed to test Hyper-V *inside* the VM.
 

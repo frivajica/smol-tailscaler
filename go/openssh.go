@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -59,9 +60,13 @@ func installOpenSSHFromGitHub() error {
 		return err
 	}
 
-	// Register the service using the bundled installer script.
-	if _, err := runCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installDir+`\install-sshd.ps1`); err != nil {
-		return fmt.Errorf("install-sshd.ps1: %w", err)
+	// Register the service using the bundled installer script. The script is
+	// idempotent, so re-running setup after a partial install is safe.
+	if serviceExists("sshd") {
+		return nil
+	}
+	if out, err := runCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installDir+`\install-sshd.ps1`); err != nil {
+		return fmt.Errorf("install-sshd.ps1: %w (%s)", err, out)
 	}
 	runCmdOK("sc.exe", "config", "sshd", "start=auto")
 	runCmdOK("sc.exe", "start", "sshd")
@@ -107,21 +112,62 @@ func downloadFile(url, dest string) error {
 	return err
 }
 
+// zipRootPrefix returns the top-level directory all entries share, or "" if
+// the zip is flat. The GitHub OpenSSH zip nests everything under a single
+// directory, which we strip on extraction.
+func zipRootPrefix(files []*zip.File) (string, error) {
+	var root string
+	for _, f := range files {
+		name := f.Name
+		i := strings.IndexAny(name, "/\\")
+		first := name
+		if i >= 0 {
+			first = name[:i]
+		}
+		if first == "" || first == "." {
+			continue
+		}
+		if root == "" {
+			root = first
+		} else if root != first {
+			return "", nil
+		}
+	}
+	return root, nil
+}
+
 func unzip(zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
+	// The OpenSSH-Win64 zip wraps every entry in a top-level directory
+	// (e.g. "OpenSSH-Win64/"). Strip it so the service paths point straight at
+	// C:\Program Files\OpenSSH\*.exe instead of a nested folder.
+	prefix, err := zipRootPrefix(r.File)
+	if err != nil {
+		return err
+	}
 	for _, f := range r.File {
-		target := destDir + "\\" + f.Name
+		rel, err := filepath.Rel(prefix, f.Name)
+		if err != nil || rel == "." {
+			continue
+		}
+		// Zip entries use forward slashes; filepath normalizes them to the OS
+		// separator and filepath.Dir resolves the real parent dir for MkdirAll.
+		// filepath.Clean also neutralizes any ../ traversal in the entry name.
+		target := filepath.Join(destDir, rel)
+		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) && target != filepath.Clean(destDir) {
+			return fmt.Errorf("zip entry escapes destination: %s", f.Name)
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(target[:strings.LastIndex(target, "\\")], 0); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0); err != nil {
 			return err
 		}
 		src, err := f.Open()

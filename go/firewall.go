@@ -17,15 +17,21 @@ func stepFirewallAndServices() {
 
 	if serviceExists("sshd") {
 		runCmdOK("sc.exe", "config", "sshd", "start=auto")
-		runCmdOK("sc.exe", "start", "sshd")
-		ok("sshd set to auto-start")
+		if err := runCmdOK("sc.exe", "start", "sshd"); err != nil && !serviceRunning("sshd") {
+			warn("could not start sshd: %s", err)
+		} else {
+			ok("sshd set to auto-start")
+		}
 	} else {
 		warn("sshd service not found - install OpenSSH Server first")
 	}
 
 	if serviceExists("Tailscale") {
 		runCmdOK("sc.exe", "config", "Tailscale", "start=auto")
-		runCmdOK("sc.exe", "start", "Tailscale")
-		ok("Tailscale set to auto-start")
+		if err := runCmdOK("sc.exe", "start", "Tailscale"); err != nil && !serviceRunning("Tailscale") {
+			warn("could not start Tailscale: %s", err)
+		} else {
+			ok("Tailscale set to auto-start")
+		}
 	}
 }

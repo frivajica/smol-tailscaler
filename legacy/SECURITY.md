@@ -47,7 +47,7 @@ Instead of reusable auth keys, generate ephemeral ones that expire after first u
 
 ### 4. Strong Passwords
 
-The `frivajica` user password should be complex. Never use simple passwords like `1824` on internet-facing machines.
+The admin user's password should be complex. Never use simple passwords like `1824` on internet-facing machines.
 
 ## SSH Hardening
 

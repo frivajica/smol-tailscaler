@@ -2,12 +2,14 @@
 .SYNOPSIS
     Script 100% Automatizado: Configuración de OpenSSH + Auto-login en Tailscale
 .DESCRIPTION
-    Crea usuario administrador 'frivajica', configura SSH (llave pública manual),
+    Crea usuario administrador (default: admin), configura SSH (llave pública manual),
     conecta a Tailscale y valida todos los servicios.
 .PARAMETER UserPassword
     Contraseña para el usuario administrador.
 .PARAMETER TsAuthKey
     Auth Key de Tailscale (tskey-auth-...).
+.PARAMETER UserName
+    Nombre del usuario administrador (opcional, default: admin).
 .EXAMPLE
     .\setup-ssh.ps1 -UserPassword "MiPassword123" -TsAuthKey "tskey-auth-..."
 #>
@@ -17,7 +19,9 @@ param(
     [string]$UserPassword,
 
     [Parameter(Mandatory=$true)]
-    [string]$TsAuthKey
+    [string]$TsAuthKey,
+
+    [string]$UserName = "admin"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +33,7 @@ $ProgressPreference = 'SilentlyContinue'
 # ==========================================
 # CONFIGURACIÓN
 # ==========================================
-$targetUser     = "frivajica"
+$targetUser     = $UserName
 $sshdConfigPath = "C:\ProgramData\ssh\sshd_config"
 
 # Detectar idioma del sistema para nombres de grupos

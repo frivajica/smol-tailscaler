@@ -4,7 +4,7 @@ One PowerShell script to set up SSH + Tailscale on any Windows machine.
 
 ## What it does
 
-- Creates an admin user (`frivajica`) with full system access
+- Creates an admin user (default `admin`, override with `-UserName`) with full system access
 - Installs & configures OpenSSH Server (password auth, key added manually)
 - Installs Tailscale if missing, connects with auth key, sets unattended mode
 - Opens firewall port 22
@@ -40,23 +40,25 @@ Windows may block script execution by default. Run from an **Administrator** Pow
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup-ssh.ps1 `
   -UserPassword "YourStrongPassword123" `
-  -TsAuthKey "tskey-auth-kXXXXX-XXXXXXXXXXXXXXXX"
+  -TsAuthKey "tskey-auth-kXXXXX-XXXXXXXXXXXXXXXX" `
+  -UserName "admin"
 ```
 
 ## Parameters
 
 | Parameter | Description |
 |---|---|
-| `-UserPassword` | Password for the `frivajica` user |
+| `-UserPassword` | Password for the admin user |
 | `-TsAuthKey` | Tailscale auth key (from [admin console](https://login.tailscale.com/admin/settings/keys)) |
+| `-UserName` | Admin user to create (optional, default: `admin`) |
 
 ## After running
 
 ```bash
-ssh frivajica@<tailscale-ip>
+ssh <user>@<tailscale-ip>
 ```
 
-The `frivajica` user has admin access — can see all processes, containers, databases, services, files, and network config on the machine.
+The admin user has admin access — can see all processes, containers, databases, services, files, and network config on the machine.
 
 ## Add your SSH key manually
 

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/term"
@@ -14,28 +15,45 @@ import (
 var (
 	tsAuthKey    = ""
 	userPassword = ""
+	targetUser   = ""
 )
 
 var (
-	targetUser string
-	verifyMode bool
-	silentMode bool
+	verifyMode       bool
+	silentMode       bool
+	overridePassword string
+	overrideAuthKey  string
+	overrideUser     string
 )
 
 func main() {
 	flag.BoolVar(&verifyMode, "verify", false, "check current state without making changes")
 	flag.BoolVar(&silentMode, "silent", false, "use embedded values only, never prompt")
-	flag.StringVar(&userPassword, "password", "", "override embedded user password")
-	flag.StringVar(&tsAuthKey, "authkey", "", "override embedded Tailscale auth key")
-	flag.StringVar(&targetUser, "user", "frivajica", "admin user to create")
+	flag.StringVar(&overridePassword, "password", "", "override embedded user password")
+	flag.StringVar(&overrideAuthKey, "authkey", "", "override embedded Tailscale auth key")
+	flag.StringVar(&overrideUser, "user", "", "override embedded admin user")
 	flag.Parse()
 
+	// Keep ldflags-embedded values unless explicitly overridden on the CLI.
+	if overridePassword != "" {
+		userPassword = overridePassword
+	}
+	if overrideAuthKey != "" {
+		tsAuthKey = overrideAuthKey
+	}
+	if overrideUser != "" {
+		targetUser = overrideUser
+	}
+	if targetUser == "" {
+		targetUser = "admin"
+	}
+
 	if !isAdmin() {
-		fatal("This tool must be run as Administrator.")
+		relaunchAsAdmin()
 	}
 
 	if verifyMode {
-		os.Exit(verify())
+		exit(verify())
 	}
 
 	if err := resolveSecrets(); err != nil {
@@ -47,6 +65,40 @@ func main() {
 	if err := runSetup(); err != nil {
 		fatal("Setup failed: %s", err)
 	}
+
+	exit(0)
+}
+
+// relaunchAsAdmin re-launches the process elevated so double-click works;
+// the new process takes over and this one exits.
+func relaunchAsAdmin() {
+	var args []string
+	for _, a := range os.Args[1:] {
+		args = append(args, strconv.Quote(a))
+	}
+	arglist := strings.Join(args, " ")
+	if arglist != "" {
+		arglist = " -ArgumentList " + arglist
+	}
+	cmd := fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs%s", os.Args[0], arglist)
+	if err := runCmdOK("powershell", "-NoProfile", "-Command", cmd); err != nil {
+		fatal("could not relaunch as Administrator: %s", err)
+	}
+	os.Exit(0)
+}
+
+// exit prints the exit-prompt so the window stays open for reading, then exits.
+func exit(code int) {
+	exitPause()
+	os.Exit(code)
+}
+
+// exitPause keeps the console window open after a double-click launch.
+func exitPause() {
+	fmt.Println()
+	fmt.Print("Press Enter to exit...")
+	fmt.Scanln()
+	fmt.Println()
 }
 
 // resolveSecrets fills in any missing values, prompting unless silent mode.
@@ -85,5 +137,5 @@ func promptSecret(label string) string {
 
 func fatal(format string, args ...any) {
 	cRed(fmt.Sprintf("ERROR: %s", fmt.Sprintf(format, args...)))
-	os.Exit(1)
+	exit(1)
 }

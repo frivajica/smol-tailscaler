@@ -85,14 +85,18 @@ func verify() int {
 	return 0
 }
 
-// serviceState extracts RUNNING / STOPPED from `sc query` output.
+// serviceState extracts RUNNING / STOPPED from `sc query` output. The STATE
+// label is localized (STATE / ESTADO / ...), so match on the numeric state
+// code that is always present in field 3 regardless of system language.
 func serviceState(output string) string {
 	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "STATE") {
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				return strings.TrimSuffix(parts[3], ",")
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) >= 3 && strings.ContainsRune(fields[1], ':') {
+			switch fields[2] {
+			case "1":
+				return "STOPPED"
+			case "4":
+				return "RUNNING"
 			}
 		}
 	}
