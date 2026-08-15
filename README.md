@@ -76,6 +76,5 @@ Add your SSH key, then disable password auth — see `docs/SECURITY.md`.
 | `./` | Go source + `build.sh` (`make-signing-cert.sh` = optional cert regen) |
 | `dist/setup.exe` | Built binary |
 | `run-setup.bat` | Optional VM runner |
-| `legacy/` | Original PowerShell version (reference) |
 | `docs/` | Security notes + Hyper-V testing guide |
 | `.env.example` | `TS_AUTH_KEY`, `USER_PASSWORD`, `USER_NAME` template |
