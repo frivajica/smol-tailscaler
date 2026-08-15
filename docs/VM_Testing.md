@@ -28,6 +28,9 @@ Set-VMDvdDrive -VMName "testwin" -Path "C:\iso\win11.iso"   # install Windows
 ```powershell
 Checkpoint-VM -Name "Windows VM NAME" -SnapshotName "clean"
 ```
+Take this right after the clean install. Once a `setup.exe` run succeeds, take a
+**fresh `clean` checkpoint again** — otherwise reverts roll back the configured
+state too (scheduled tasks, service start types, Tailscale node, cert trust).
 
 ### 3. Test — anything, anytime (guest, Admin)
 Run `setup.exe`, break permissions, change ACLs — whatever.
@@ -54,7 +57,7 @@ Remove-Item D:\vms\testwin-child.vhdx
 
 | Method | Best for | Command / use |
 |---|---|---|
-| **HTTP server** | Quick one-off | Mac: `python3 -m http.server 8000` → VM: `http://<mac-ip>:8000/dist/` |
+| **HTTP server** | Quick one-off | Mac (from `go/`): `python3 -m http.server 8000` → VM: `http://<mac-ip>:8000/dist/setup.exe` |
 | **Host shared folder** | Testing loops | Host: `New-SmbShare -Name "vmshare" -Path "C:\vm-share" -FullAccess "Everyone"` → VM: `\\<host-ip>\vmshare` |
 | **Enhanced Session Mode** | Clipboard + drive redirection | Hyper-V Manager → connect with Enhanced Session Mode |
 
@@ -62,7 +65,8 @@ Use the Mac's Tailscale IP (or LAN IP if the VM has no Tailscale yet).
 
 ## Caveats
 
-- **Tailscale re-auth** — reverting reverts Tailscale state; `setup.exe` re-registers the node. If "Require device approval" is on, approve a node every cycle.
+- **Tailscale re-auth** — reverting reverts Tailscale state; `setup.exe` re-registers the node. If "Require device approval" is on, approve a node every cycle. A **single-use** auth key is consumed on first use, so later cycles fail — use a reusable or ephemeral key (see `docs/SECURITY.md`).
+- **Signing / Smart App Control** — `setup.exe` is code-signed with a self-signed cert each machine must trust (double-click `signing.crt` → install into Trusted Root + Trusted Publishers). Reverting a checkpoint also reverts that trust, so re-import the cert every cycle — or disable Smart App Control once and leave it off.
 - **Home guest** — DISM "succeeds" but never installs sshd (`0x800f0950`), so `setup.exe` always falls back to GitHub. **Expected and verified.** Install Pro in the VM only to test the Windows Update path.
 - **Elevation** — `setup.exe` self-elevates via UAC on double-click (or use `run-setup.bat`). `-verify` must also run elevated.
 - **Snapshots on a different disk** — keep checkpoints/VHDX off the OS disk (performance/isolation).

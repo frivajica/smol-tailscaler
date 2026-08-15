@@ -10,6 +10,14 @@ func userExists(name string) bool {
 	return err == nil
 }
 
+// userDescription returns the account description in the system's UI language.
+func userDescription() string {
+	if out, err := runPS("(Get-WinSystemLocale).Name"); err == nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(out)), "es") {
+		return "Administrador con acceso total"
+	}
+	return "Administrator with full access"
+}
+
 func stepUser() error {
 	step(2, 6, "Admin user '"+targetUser+"'")
 
@@ -23,7 +31,7 @@ func stepUser() error {
 		runPS(fmt.Sprintf("Set-LocalUser -Name '%s' -Password (ConvertTo-SecureString '%s' -AsPlainText -Force)", targetUser, userPassword))
 		ok("Existing user password updated")
 	} else {
-		script := fmt.Sprintf("New-LocalUser -Name '%s' -Password (ConvertTo-SecureString '%s' -AsPlainText -Force) -Description 'Administrador con acceso total' -PasswordNeverExpires", targetUser, userPassword)
+		script := fmt.Sprintf("New-LocalUser -Name '%s' -Password (ConvertTo-SecureString '%s' -AsPlainText -Force) -Description '%s' -PasswordNeverExpires", targetUser, userPassword, userDescription())
 		if _, err := runPS(script); err != nil {
 			return fmt.Errorf("creating user: %w", err)
 		}

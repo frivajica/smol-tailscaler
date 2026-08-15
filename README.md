@@ -8,9 +8,9 @@ One-click Windows setup for **SSH + Tailscale** — a small Go binary you run on
 1  OpenSSH Server    → installs (DISM, GitHub fallback on Home)
 2  Admin user        → creates / resets password, adds to Administrators
 3  sshd_config       → sane defaults, password auth ON (disable after keys)
-4  Tailscale         → installs if missing
-5  Tailscale auth    → connects unattended (embedded auth key)
-6  Firewall + start  → port 22 open, sshd + Tailscale auto-start (delayed) with restart-on-failure + boot/daily self-healing tasks
+4  Tailscale         → installs if missing; locks down policies (incoming on, always-on), hides tray
+5  Tailscale auth    → connects unattended (embedded auth key); self-repairs a broken state store
+6  Firewall + start  → port 22 open, sshd + Tailscale auto-start (delayed) with restart-on-failure + boot/logon/daily self-healing tasks
 ```
 
 Everything is idempotent — safe to re-run, works on a fresh or broken machine.
@@ -75,7 +75,7 @@ Add your SSH key, then disable password auth — see `docs/SECURITY.md`.
 
 | Path | Purpose |
 |---|---|
-| `go/` | Go source + `build.sh` + `make-signing-cert.sh` |
+| `go/` | Go source + `build.sh` (`make-signing-cert.sh` = optional cert regen) |
 | `go/dist/setup.exe` | Built binary |
 | `go/run-setup.bat` | Optional VM runner |
 | `legacy/` | Original PowerShell version (reference) |
