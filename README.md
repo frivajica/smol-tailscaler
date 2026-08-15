@@ -10,7 +10,7 @@ One-click Windows setup for **SSH + Tailscale** — a small Go binary you run on
 3  sshd_config       → sane defaults, password auth ON (disable after keys)
 4  Tailscale         → installs if missing
 5  Tailscale auth    → connects unattended (embedded auth key)
-6  Firewall + start  → port 22 open, sshd + Tailscale auto-start
+6  Firewall + start  → port 22 open, sshd + Tailscale auto-start (delayed) with restart-on-failure + boot/daily self-healing tasks
 ```
 
 Everything is idempotent — safe to re-run, works on a fresh or broken machine.

@@ -30,6 +30,9 @@ func verify() int {
 		out, _ := runCmd("sc.exe", "query", "sshd")
 		state := serviceState(out)
 		check("sshd service", state == "RUNNING", "state: "+state)
+		if qc, err := runCmd("sc.exe", "qc", "sshd"); err == nil {
+			check("sshd auto-start", strings.Contains(startType(qc), "AUTO_START"), "start: "+startType(qc))
+		}
 	} else {
 		check("sshd service", false, "not installed")
 	}

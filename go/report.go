@@ -75,14 +75,20 @@ func printReport(tsPath string, success bool) {
 	}
 }
 
-// startType extracts the START_TYPE value from `sc qc` output.
+// startType extracts the start type from `sc qc` output. The label is
+// localized (START_TYPE / TIPO_INICIO / ...), so match the numeric code that
+// uniquely identifies the field: 2=auto (incl. delayed), 3=demand, 4=disabled.
 func startType(output string) string {
 	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "START_TYPE") {
-			fields := strings.Fields(line)
-			if len(fields) >= 4 {
-				return fields[3]
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) >= 3 && strings.ContainsRune(fields[1], ':') {
+			switch fields[2] {
+			case "2":
+				return "AUTO_START"
+			case "3":
+				return "DEMAND_START"
+			case "4":
+				return "DISABLED"
 			}
 		}
 	}
