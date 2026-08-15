@@ -36,6 +36,11 @@ func stepTailscale() (string, error) {
 	}
 	ok("Tailscale found: " + tsPath)
 
+	// Policies must be active before the connection comes up so users can't
+	// flip shields-up, disconnect, or switch exit nodes from the tray GUI.
+	applyTailscalePolicies()
+	hideTailscaleTray()
+
 	if err := tailscaleAuth(tsPath); err != nil {
 		return "", err
 	}
@@ -55,10 +60,51 @@ func installTailscale() error {
 	}
 	defer os.Remove(installer)
 
-	if err := runCmdOK("msiexec.exe", "/i", installer, "/quiet", "/norestart"); err != nil {
+	// TS_NOLAUNCH stops the MSI from starting the tray GUI at the end of
+	// install; the connection still runs as the headless SYSTEM service.
+	if err := runCmdOK("msiexec.exe", "/i", installer, "TS_NOLAUNCH=1", "/quiet", "/norestart"); err != nil {
 		return fmt.Errorf("installing Tailscale MSI: %w", err)
 	}
 	return nil
+}
+
+const tailscaleStartupLnk = `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Tailscale.lnk`
+
+// applyTailscalePolicies locks down the Tailscale client so local users can't
+// change settings that affect connectivity. Values are REG_SZ under the
+// HKLM policies key and are enforced daemon-side (they win over GUI + CLI,
+// and the GUI hides the matching menu items). Requires elevation.
+func applyTailscalePolicies() {
+	base := "New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Force | Out-Null"
+	script := base + `
+Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'AllowIncomingConnections' -Value 'always' -Type String -Force
+Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'UnattendedMode' -Value 'always' -Type String -Force
+Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'AlwaysOn.Enabled' -Value '1' -Type String -Force
+Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'ExitNodesPicker' -Value 'hide' -Type String -Force
+Restart-Service -Name 'Tailscale' -Force -ErrorAction SilentlyContinue`
+	if _, err := runPS(script); err != nil {
+		warn("applying Tailscale policies: %s", err)
+	} else {
+		ok("Tailscale policies locked down (incoming, unattended, always-on, exit picker)")
+	}
+}
+
+// hideTailscaleTray removes the tray auto-start shortcut, kills any running
+// GUI, and registers silent SYSTEM scheduled tasks that re-remove the shortcut
+// after Tailscale updates recreate it. All steps swallow errors so other users
+// are never bothered by visible output.
+func hideTailscaleTray() {
+	os.Remove(tailscaleStartupLnk)
+	runCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
+
+	removeCmd := "powershell -NoProfile -WindowStyle Hidden -Command \"Remove-Item -LiteralPath '" +
+		tailscaleStartupLnk + "' -Force -ErrorAction SilentlyContinue\""
+	runCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray", "/tr", removeCmd,
+		"/sc", "onlogon", "/ru", "SYSTEM", "/rl", "highest", "/f")
+	runCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray Daily", "/tr", removeCmd,
+		"/sc", "daily", "/st", "00:00", "/ru", "SYSTEM", "/rl", "highest", "/f")
+
+	ok("Tailscale tray hidden (GUI auto-start disabled)")
 }
 
 func tailscaleAuth(tsPath string) error {
