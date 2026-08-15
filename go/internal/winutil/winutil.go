@@ -3,9 +3,12 @@
 package winutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -85,6 +88,87 @@ func DownloadFile(url, dest string) error {
 	defer out.Close()
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+// VerifySHA256 checks file against the "<url>.sha256" sidecar served next to
+// the download. The "latest" alias does not serve a sidecar, so its redirect
+// target is resolved first and the sidecar is fetched from the versioned URL.
+func VerifySHA256(url, file string) error {
+	versioned, err := resolveRedirect(url)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodGet, versioned+".sha256", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	resp, err := APIClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("checksum for %s returned %s", url, resp.Status)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	want := strings.TrimSpace(string(body))
+	got, err := SHA256File(file)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("checksum mismatch: got %s want %s", got, want)
+	}
+	return nil
+}
+
+// SHA256File returns the hex SHA-256 digest of a file.
+func SHA256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// resolveRedirect returns url itself if it responds directly, or the final
+// location it redirects to (without following it).
+func resolveRedirect(rawURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodHead, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return rawURL, nil
+	}
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		return "", fmt.Errorf("resolving %s: got %s with no redirect target", rawURL, resp.Status)
+	}
+	base, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	ref, err := url.Parse(loc)
+	if err != nil {
+		return "", err
+	}
+	return base.ResolveReference(ref).String(), nil
 }
 
 // IsAdmin reports whether the current process has Administrator privileges.

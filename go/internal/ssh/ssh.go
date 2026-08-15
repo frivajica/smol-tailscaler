@@ -83,6 +83,9 @@ func installFromGitHub() error {
 	}
 
 	zipPath := filepath.Join(os.TempDir(), "openssh.zip")
+	// Known limitation: GitHub release assets have no checksum sidecar, so the
+	// zip is integrity-checked only by its HTTPS transport. The Tailscale MSI
+	// does ship a .sha256 and is verified (see tailscale.install).
 	if err := winutil.DownloadFile(asset.BrowserDownloadURL, zipPath); err != nil {
 		return err
 	}

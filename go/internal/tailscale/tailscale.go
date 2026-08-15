@@ -66,6 +66,12 @@ func install() error {
 	}
 	defer os.Remove(installer)
 
+	// pkgs.tailscale.com publishes a .sha256 sidecar per versioned file;
+	// verify against it before handing the MSI to msiexec.
+	if err := winutil.VerifySHA256(url, installer); err != nil {
+		return fmt.Errorf("verifying Tailscale download: %w", err)
+	}
+
 	// TS_NOLAUNCH stops the MSI from starting the tray GUI at the end of
 	// install; the connection still runs as the headless SYSTEM service.
 	if err := winutil.RunCmdOK("msiexec.exe", "/i", installer, "TS_NOLAUNCH=1", "/quiet", "/norestart"); err != nil {
