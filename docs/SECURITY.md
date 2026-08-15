@@ -17,18 +17,26 @@ The binary is still signed with your cert — add `-nosign` if you don't want th
 ## Signing certificate
 
 `build.sh` auto-generates a self-signed code-signing cert
-(`go/signing/signing.pfx`, password `changeme` by default) and signs every
-build. Treat the cert + its password as a credential:
+(`go/signing/signing.pfx`) and signs every build. The PFX password is generated
+randomly on first build and stored next to the cert in `go/signing/.pass`
+(chmod 700, gitignored); later builds reuse it automatically. Override with
+`-signpass` or `SIGN_PASSWORD` env. Treat the cert + its password as a
+credential:
 
 - Anyone with the PFX can sign binaries that your machines will trust (you
   imported the cert into **Trusted Root** and **Trusted Publishers** on each
   target machine).
 - `go/signing/` is gitignored — never commit it.
-- Change the password from the `changeme` default (`-signpass` or
-  `SIGN_PASSWORD` env).
 - Self-signed means per-machine trust, not reputation — **Smart App Control
   may still block the binary** depending on its reputation model. Fall back to
   turning SAC off in a throwaway VM.
+
+## Download integrity
+
+- The **Tailscale MSI** is verified against the `.sha256` sidecar published on
+  pkgs.tailscale.com before it is handed to `msiexec`.
+- The **Win32-OpenSSH zip** has no published checksum sidecar, so it is
+  integrity-checked only by its HTTPS transport (known limitation).
 
 ## Tailscale risk
 
