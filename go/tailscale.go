@@ -7,6 +7,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"setup-windows/internal/ui"
+	"setup-windows/internal/winutil"
 )
 
 func findTailscalePath() string {
@@ -15,7 +18,7 @@ func findTailscalePath() string {
 		`C:\Program Files (x86)\Tailscale\tailscale.exe`,
 	}
 	for _, p := range candidates {
-		if fileExists(p) {
+		if winutil.FileExists(p) {
 			return p
 		}
 	}
@@ -23,11 +26,11 @@ func findTailscalePath() string {
 }
 
 func stepTailscale() (string, error) {
-	step(4, 6, "Tailscale")
+	ui.Step(4, 6, "Tailscale")
 
 	tsPath := findTailscalePath()
 	if tsPath == "" {
-		cYellow("  Tailscale not found, downloading and installing...\n")
+		ui.Cyan("  Tailscale not found, downloading and installing...\n")
 		if err := installTailscale(); err != nil {
 			return "", err
 		}
@@ -36,7 +39,7 @@ func stepTailscale() (string, error) {
 			return "", fmt.Errorf("Tailscale installed but executable not found")
 		}
 	}
-	ok("Tailscale found: " + tsPath)
+	ui.Ok("Tailscale found: " + tsPath)
 
 	// Policies must be active before the connection comes up so users can't
 	// flip shields-up, disconnect, or switch exit nodes from the tray GUI.
@@ -57,14 +60,14 @@ func installTailscale() error {
 	url := "https://pkgs.tailscale.com/stable/tailscale-setup-latest-" + arch + ".msi"
 	installer := filepath.Join(os.TempDir(), "tailscale-installer.msi")
 
-	if err := downloadFile(url, installer); err != nil {
+	if err := winutil.DownloadFile(url, installer); err != nil {
 		return fmt.Errorf("downloading Tailscale: %w", err)
 	}
 	defer os.Remove(installer)
 
 	// TS_NOLAUNCH stops the MSI from starting the tray GUI at the end of
 	// install; the connection still runs as the headless SYSTEM service.
-	if err := runCmdOK("msiexec.exe", "/i", installer, "TS_NOLAUNCH=1", "/quiet", "/norestart"); err != nil {
+	if err := winutil.RunCmdOK("msiexec.exe", "/i", installer, "TS_NOLAUNCH=1", "/quiet", "/norestart"); err != nil {
 		return fmt.Errorf("installing Tailscale MSI: %w", err)
 	}
 	return nil
@@ -84,10 +87,10 @@ Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'UnattendedM
 Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'AlwaysOn.Enabled' -Value '1' -Type String -Force
 Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Tailscale' -Name 'ExitNodesPicker' -Value 'hide' -Type String -Force
 Restart-Service -Name 'Tailscale' -Force -ErrorAction SilentlyContinue`
-	if _, err := runPS(script); err != nil {
-		warn("applying Tailscale policies: %s", err)
+	if _, err := winutil.RunPS(script); err != nil {
+		ui.Warn("applying Tailscale policies: %s", err)
 	} else {
-		ok("Tailscale policies locked down (incoming, unattended, always-on, exit picker)")
+		ui.Ok("Tailscale policies locked down (incoming, unattended, always-on, exit picker)")
 	}
 }
 
@@ -97,61 +100,61 @@ Restart-Service -Name 'Tailscale' -Force -ErrorAction SilentlyContinue`
 // are never bothered by visible output.
 func hideTailscaleTray() {
 	os.Remove(tailscaleStartupLnk)
-	runCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
+	winutil.RunCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
 
 	removeCmd := "powershell -NoProfile -WindowStyle Hidden -Command \"Remove-Item -LiteralPath '" +
 		tailscaleStartupLnk + "' -Force -ErrorAction SilentlyContinue\""
-	runCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray", "/tr", removeCmd,
+	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray", "/tr", removeCmd,
 		"/sc", "onlogon", "/ru", "SYSTEM", "/rl", "highest", "/f")
-	runCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray Daily", "/tr", removeCmd,
+	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscale Hide Tray Daily", "/tr", removeCmd,
 		"/sc", "daily", "/st", "00:00", "/ru", "SYSTEM", "/rl", "highest", "/f")
 
-	ok("Tailscale tray hidden (GUI auto-start disabled)")
+	ui.Ok("Tailscale tray hidden (GUI auto-start disabled)")
 }
 
 func tailscaleAuth(tsPath string) error {
-	step(5, 6, "Tailscale auth")
+	ui.Step(5, 6, "Tailscale auth")
 
 	// Right after boot the daemon may still be starting; `tailscale status`
 	// then reports "Tailscale is starting" with an error, which would look
 	// like a logged-out node and trigger a needless re-auth. Wait it out.
 	for i := 0; i < 5; i++ {
-		out, err := runCmd(tsPath, "status")
+		out, err := winutil.RunCmd(tsPath, "status")
 		if err == nil || !strings.Contains(strings.ToLower(out), "starting") {
 			break
 		}
-		cGray("  tailscale status: %s\n", strings.TrimSpace(out))
+		ui.Gray("  tailscale status: %s\n", strings.TrimSpace(out))
 		time.Sleep(3 * time.Second)
 	}
 
-	statusOut, err := runCmd(tsPath, "status")
+	statusOut, err := winutil.RunCmd(tsPath, "status")
 	if err != nil {
-		cGray("  tailscale status: %s\n", strings.TrimSpace(statusOut))
+		ui.Gray("  tailscale status: %s\n", strings.TrimSpace(statusOut))
 		// Not connected - authenticate with the embedded/flag auth key.
-		out, upErr := runCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended")
+		out, upErr := winutil.RunCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended")
 		if upErr != nil {
 			// A broken state store (failed TPM->plaintext migration or a file
 			// locked by a stale process) blocks backend start entirely. Clear
 			// the node state per Tailscale's recovery steps, then retry once.
 			if strings.Contains(strings.ToLower(out+statusOut), "state store") {
-				warn("Tailscale state store is unhealthy - resetting node state and retrying")
+				ui.Warn("Tailscale state store is unhealthy - resetting node state and retrying")
 				if repairErr := repairTailscaleState(); repairErr != nil {
 					return fmt.Errorf("Tailscale state store repair: %w", repairErr)
 				}
-				if out, retryErr := runCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended"); retryErr != nil {
+				if out, retryErr := winutil.RunCmd(tsPath, "up", "--auth-key="+tsAuthKey, "--unattended"); retryErr != nil {
 					return fmt.Errorf("tailscale up after state reset: %w (%s)", retryErr, strings.TrimSpace(out))
 				}
 			} else {
 				return fmt.Errorf("tailscale up: %w (%s)", upErr, strings.TrimSpace(out))
 			}
 		}
-		ok("Tailscale connected, unattended mode enabled")
+		ui.Ok("Tailscale connected, unattended mode enabled")
 		return nil
 	}
-	if err := runCmdOK(tsPath, "up", "--unattended"); err != nil {
+	if err := winutil.RunCmdOK(tsPath, "up", "--unattended"); err != nil {
 		return fmt.Errorf("tailscale up --unattended: %w", err)
 	}
-	ok("Tailscale already connected, unattended confirmed")
+	ui.Ok("Tailscale already connected, unattended confirmed")
 	return nil
 }
 
@@ -159,14 +162,14 @@ func tailscaleAuth(tsPath string) error {
 // restarts it so the backend can re-initialize cleanly. The node is then
 // re-registered with the embedded auth key.
 func repairTailscaleState() error {
-	runCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
-	runCmdOK("sc.exe", "stop", "Tailscale")
+	winutil.RunCmdOK("taskkill", "/F", "/IM", "tailscale-ipn.exe")
+	winutil.RunCmdOK("sc.exe", "stop", "Tailscale")
 	time.Sleep(2 * time.Second)
 
 	// Try to clear any restrictive ACLs on the state dir first so deletion
 	// isn't blocked by "Access is denied".
-	runCmdOK("takeown", "/F", `C:\ProgramData\Tailscale`, "/R", "/D", "Y")
-	runCmdOK("icacls", `C:\ProgramData\Tailscale`, "/reset", "/T", "/C")
+	winutil.RunCmdOK("takeown", "/F", `C:\ProgramData\Tailscale`, "/R", "/D", "Y")
+	winutil.RunCmdOK("icacls", `C:\ProgramData\Tailscale`, "/reset", "/T", "/C")
 
 	paths := []string{
 		`C:\ProgramData\Tailscale\server-state.conf`,
@@ -179,11 +182,11 @@ func repairTailscaleState() error {
 		os.RemoveAll(p)
 	}
 
-	if err := runCmdOK("sc.exe", "start", "Tailscale"); err != nil {
+	if err := winutil.RunCmdOK("sc.exe", "start", "Tailscale"); err != nil {
 		return fmt.Errorf("starting Tailscale service: %w", err)
 	}
 	for i := 0; i < 30; i++ {
-		if serviceRunning("Tailscale") {
+		if winutil.ServiceRunning("Tailscale") {
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -196,7 +199,7 @@ func tailscaleIP(tsPath string) string {
 	if tsPath == "" {
 		return "<unavailable>"
 	}
-	out, err := runCmd(tsPath, "ip", "-4")
+	out, err := winutil.RunCmd(tsPath, "ip", "-4")
 	if err != nil {
 		return "<unavailable>"
 	}

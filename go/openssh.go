@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"setup-windows/internal/winutil"
 )
 
 const opensshReleaseAPI = "https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest"
@@ -46,8 +48,8 @@ func installOpenSSHFromGitHub() error {
 		return fmt.Errorf("no %s zip asset found in latest Win32-OpenSSH release", arch)
 	}
 
-	zipPath := os.TempDir() + "\\openssh.zip"
-	if err := downloadFile(asset.BrowserDownloadURL, zipPath); err != nil {
+	zipPath := filepath.Join(os.TempDir(), "openssh.zip")
+	if err := winutil.DownloadFile(asset.BrowserDownloadURL, zipPath); err != nil {
 		return err
 	}
 	defer os.Remove(zipPath)
@@ -62,14 +64,14 @@ func installOpenSSHFromGitHub() error {
 
 	// Register the service using the bundled installer script. The script is
 	// idempotent, so re-running setup after a partial install is safe.
-	if serviceExists("sshd") {
+	if winutil.ServiceExists("sshd") {
 		return nil
 	}
-	if out, err := runCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installDir+`\install-sshd.ps1`); err != nil {
+	if out, err := winutil.RunPSFile(installDir + `\install-sshd.ps1`); err != nil {
 		return fmt.Errorf("install-sshd.ps1: %w (%s)", err, out)
 	}
-	runCmdOK("sc.exe", "config", "sshd", "start=auto")
-	runCmdOK("sc.exe", "start", "sshd")
+	winutil.RunCmdOK("sc.exe", "config", "sshd", "start=auto")
+	winutil.RunCmdOK("sc.exe", "start", "sshd")
 	return nil
 }
 
@@ -78,8 +80,8 @@ func fetchGitHubRelease() (*githubRelease, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := apiClient.Do(req)
+	req.Header.Set("User-Agent", winutil.UserAgent)
+	resp, err := winutil.APIClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -92,29 +94,6 @@ func fetchGitHubRelease() (*githubRelease, error) {
 		return nil, err
 	}
 	return &rel, nil
-}
-
-func downloadFile(url, dest string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s returned %s", url, resp.Status)
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
 }
 
 // zipRootPrefix returns the top-level directory all entries share, or "" if

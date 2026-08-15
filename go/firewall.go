@@ -2,12 +2,15 @@ package main
 
 import (
 	"os"
+
+	"setup-windows/internal/ui"
+	"setup-windows/internal/winutil"
 )
 
 const ensureScriptPath = `C:\ProgramData\Tailscaler\ensure.ps1`
 
 func stepFirewallAndServices() {
-	step(6, 6, "Firewall + services")
+	ui.Step(6, 6, "Firewall + services")
 
 	ensureFirewallRule()
 	ensureServicePersists("sshd")
@@ -18,15 +21,15 @@ func stepFirewallAndServices() {
 // ensureFirewallRule allows inbound SSH on port 22, creating the rule if the
 // check (or the rule itself) is missing.
 func ensureFirewallRule() {
-	if runCmdOK("netsh", "advfirewall", "firewall", "show", "rule", "name=OpenSSH-Server-In-TCP") != nil {
-		if err := runCmdOK("netsh", "advfirewall", "firewall", "add", "rule",
+	if winutil.RunCmdOK("netsh", "advfirewall", "firewall", "show", "rule", "name=OpenSSH-Server-In-TCP") != nil {
+		if err := winutil.RunCmdOK("netsh", "advfirewall", "firewall", "add", "rule",
 			"name=OpenSSH-Server-In-TCP", "dir=in", "action=allow", "protocol=TCP", "localport=22"); err != nil {
-			warn("firewall rule: %s", err)
+			ui.Warn("firewall rule: %s", err)
 		} else {
-			ok("Firewall rule created for port 22")
+			ui.Ok("Firewall rule created for port 22")
 		}
 	} else {
-		ok("Firewall rule already exists")
+		ui.Ok("Firewall rule already exists")
 	}
 }
 
@@ -34,18 +37,18 @@ func ensureFirewallRule() {
 // Delayed start gives the network stack time to come up (sshd fails to bind
 // port 22 at boot otherwise), and failure actions restart it if it dies later.
 func ensureServicePersists(name string) {
-	if !serviceExists(name) {
-		warn("%s service not found - skipping", name)
+	if !winutil.ServiceExists(name) {
+		ui.Warn("%s service not found - skipping", name)
 		return
 	}
-	runCmdOK("sc.exe", "config", name, "start=delayed-auto")
-	runCmdOK("sc.exe", "failure", name, "reset=86400", "actions=restart/5000/restart/10000")
-	if !serviceRunning(name) {
-		if err := runCmdOK("sc.exe", "start", name); err != nil && !serviceRunning(name) {
-			warn("could not start %s: %s", name, err)
+	winutil.RunCmdOK("sc.exe", "config", name, "start=delayed-auto")
+	winutil.RunCmdOK("sc.exe", "failure", name, "reset=86400", "actions=restart/5000/restart/10000")
+	if !winutil.ServiceRunning(name) {
+		if err := winutil.RunCmdOK("sc.exe", "start", name); err != nil && !winutil.ServiceRunning(name) {
+			ui.Warn("could not start %s: %s", name, err)
 		}
 	}
-	ok(name + " set to auto-start (delayed) with restart-on-failure")
+	ui.Ok(name + " set to auto-start (delayed) with restart-on-failure")
 }
 
 // ensureSelfHealingTasks registers SYSTEM scheduled tasks that re-apply the
@@ -56,13 +59,13 @@ func ensureServicePersists(name string) {
 func ensureSelfHealingTasks() {
 	writeEnsureScript()
 	tr := "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " + ensureScriptPath
-	runCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH", "/tr", tr,
+	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH", "/tr", tr,
 		"/sc", "onstart", "/ru", "SYSTEM", "/rl", "highest", "/f")
-	runCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH Logon", "/tr", tr,
+	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH Logon", "/tr", tr,
 		"/sc", "onlogon", "/ru", "SYSTEM", "/rl", "highest", "/f")
-	runCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH Daily", "/tr", tr,
+	winutil.RunCmdOK("schtasks", "/create", "/tn", "Tailscaler Ensure SSH Daily", "/tr", tr,
 		"/sc", "daily", "/st", "00:00", "/ru", "SYSTEM", "/rl", "highest", "/f")
-	ok("Self-healing scheduled tasks installed (boot + logon + daily)")
+	ui.Ok("Self-healing scheduled tasks installed (boot + logon + daily)")
 }
 
 // writeEnsureScript drops the self-healing script to disk. It retries service

@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/term"
+	"setup-windows/internal/ui"
+	"setup-windows/internal/winutil"
 )
 
 // Embedded secrets - injected at build time via -ldflags (see build.sh).
@@ -51,7 +52,7 @@ func main() {
 		fatal("invalid user name %q: only letters, digits, '.', '_' and '-' are allowed", targetUser)
 	}
 
-	if !isAdmin() {
+	if !winutil.IsAdmin() {
 		relaunchAsAdmin()
 	}
 
@@ -87,7 +88,7 @@ func relaunchAsAdmin() {
 		arglist = " -ArgumentList " + arglist
 	}
 	cmd := fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs%s", os.Args[0], arglist)
-	if err := runCmdOK("powershell", "-NoProfile", "-Command", cmd); err != nil {
+	if err := winutil.RunCmdOK("powershell", "-NoProfile", "-Command", cmd); err != nil {
 		fatal("could not relaunch as Administrator: %s", err)
 	}
 	os.Exit(0)
@@ -113,35 +114,31 @@ func resolveSecrets() error {
 		if silentMode {
 			return fmt.Errorf("no user password provided and -silent is set")
 		}
-		userPassword = promptSecret("Password for user '" + targetUser + "'")
+		secret, err := ui.PromptSecret("Password for user '" + targetUser + "'")
+		if err != nil {
+			return err
+		}
+		userPassword = secret
 	}
 	if tsAuthKey == "" {
 		if silentMode {
 			return fmt.Errorf("no Tailscale auth key provided and -silent is set")
 		}
-		tsAuthKey = promptSecret("Tailscale auth key")
+		secret, err := ui.PromptSecret("Tailscale auth key")
+		if err != nil {
+			return err
+		}
+		tsAuthKey = secret
 	}
 	return nil
 }
 
 func banner() {
-	cCyan("==============================================")
-	cCyan(" Setup: SSH + Tailscale                        ")
-	cCyan("==============================================")
+	ui.Header("Setup: SSH + Tailscale")
 	fmt.Printf("Target user: %s\n", targetUser)
 }
 
-func promptSecret(label string) string {
-	fmt.Printf("%s: ", label)
-	b, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		fatal("could not read input: %s", err)
-	}
-	return strings.TrimSpace(string(b))
-}
-
 func fatal(format string, args ...any) {
-	cRed(fmt.Sprintf("ERROR: %s", fmt.Sprintf(format, args...)))
+	ui.Red(fmt.Sprintf("ERROR: %s", fmt.Sprintf(format, args...)))
 	exit(1)
 }

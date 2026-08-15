@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"setup-windows/internal/ui"
+	"setup-windows/internal/winutil"
 )
 
 // validUsername reports whether name is safe to interpolate into PowerShell
@@ -21,26 +24,26 @@ func validUsername(name string) bool {
 }
 
 func userExists(name string) bool {
-	_, err := runPS(fmt.Sprintf("Get-LocalUser -Name '%s' -ErrorAction SilentlyContinue", name))
+	_, err := winutil.RunPS(fmt.Sprintf("Get-LocalUser -Name '%s' -ErrorAction SilentlyContinue", name))
 	return err == nil
 }
 
 // userDescription returns the account description in the system's UI language.
 func userDescription() string {
-	if out, err := runPS("(Get-WinSystemLocale).Name"); err == nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(out)), "es") {
+	if out, err := winutil.RunPS("(Get-WinSystemLocale).Name"); err == nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(out)), "es") {
 		return "Administrador con acceso total"
 	}
 	return "Administrator with full access"
 }
 
 func stepUser() error {
-	step(2, 6, "Admin user '"+targetUser+"'")
+	ui.Step(2, 6, "Admin user '"+targetUser+"'")
 
 	if !validUsername(targetUser) {
 		return fmt.Errorf("invalid user name %q: only letters, digits, '.', '_' and '-' are allowed", targetUser)
 	}
 
-	group, err := adminGroupName()
+	group, err := winutil.AdminGroupName()
 	if err != nil {
 		return err
 	}
@@ -49,27 +52,27 @@ func stepUser() error {
 	// The password travels via $env:TS_USER_PASSWORD so it never lands in the
 	// PowerShell command line (visible via process listings) or the script.
 	if userExists(targetUser) {
-		if _, err := runPSEnv(fmt.Sprintf("Set-LocalUser -Name '%s' -Password (ConvertTo-SecureString $env:TS_USER_PASSWORD -AsPlainText -Force)", targetUser), "TS_USER_PASSWORD="+userPassword); err != nil {
+		if _, err := winutil.RunPSEnv(fmt.Sprintf("Set-LocalUser -Name '%s' -Password (ConvertTo-SecureString $env:TS_USER_PASSWORD -AsPlainText -Force)", targetUser), "TS_USER_PASSWORD="+userPassword); err != nil {
 			return fmt.Errorf("updating user password: %w", err)
 		}
-		ok("Existing user password updated")
+		ui.Ok("Existing user password updated")
 	} else {
 		script := fmt.Sprintf("New-LocalUser -Name '%s' -Password (ConvertTo-SecureString $env:TS_USER_PASSWORD -AsPlainText -Force) -Description '%s' -PasswordNeverExpires", targetUser, userDescription())
-		if _, err := runPSEnv(script, "TS_USER_PASSWORD="+userPassword); err != nil {
+		if _, err := winutil.RunPSEnv(script, "TS_USER_PASSWORD="+userPassword); err != nil {
 			return fmt.Errorf("creating user: %w", err)
 		}
-		ok("User created")
+		ui.Ok("User created")
 	}
 
 	// Idempotent: `net localgroup X user /add` fails with exit code 2 when the
 	// user is already a member, so check membership first.
-	member, _ := runPS(fmt.Sprintf("Get-LocalGroupMember -Group '%s' -Member '%s' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name", group, targetUser))
+	member, _ := winutil.RunPS(fmt.Sprintf("Get-LocalGroupMember -Group '%s' -Member '%s' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name", group, targetUser))
 	if strings.Contains(member, targetUser) {
-		ok("Already in " + group)
-	} else if err := runCmdOK("net", "localgroup", group, targetUser, "/add"); err != nil {
+		ui.Ok("Already in " + group)
+	} else if err := winutil.RunCmdOK("net", "localgroup", group, targetUser, "/add"); err != nil {
 		return fmt.Errorf("adding to %s: %w", group, err)
 	} else {
-		ok("Added to " + group)
+		ui.Ok("Added to " + group)
 	}
 	return nil
 }

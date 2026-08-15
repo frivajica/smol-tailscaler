@@ -4,41 +4,42 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"setup-windows/internal/ui"
+	"setup-windows/internal/winutil"
 )
 
 func verify() int {
-	cCyan("==============================================")
-	cCyan(" Verify: SSH + Tailscale state               ")
-	cCyan("==============================================")
+	ui.Header("Verify: SSH + Tailscale state")
 
 	failed := false
 
 	check := func(label string, pass bool, detail string) {
 		if pass {
-			cGreen("  [PASS] %s", label)
+			ui.Green("  [PASS] %s\n", label)
 		} else {
-			cRed("  [FAIL] %s", label)
+			ui.Red("  [FAIL] %s\n", label)
 			failed = true
 		}
 		if detail != "" {
-			cGray("         %s\n", detail)
+			ui.Gray("         %s\n", detail)
 		}
 	}
 
 	// 1. OpenSSH service
-	if serviceExists("sshd") {
-		out, _ := runCmd("sc.exe", "query", "sshd")
-		state := serviceState(out)
+	if winutil.ServiceExists("sshd") {
+		out, _ := winutil.RunCmd("sc.exe", "query", "sshd")
+		state := winutil.ServiceState(out)
 		check("sshd service", state == "RUNNING", "state: "+state)
-		if qc, err := runCmd("sc.exe", "qc", "sshd"); err == nil {
-			check("sshd auto-start", strings.Contains(startType(qc), "AUTO_START"), "start: "+startType(qc))
+		if qc, err := winutil.RunCmd("sc.exe", "qc", "sshd"); err == nil {
+			check("sshd auto-start", strings.Contains(winutil.StartType(qc), "AUTO_START"), "start: "+winutil.StartType(qc))
 		}
 	} else {
 		check("sshd service", false, "not installed")
 	}
 
 	// 2. sshd_config
-	if fileExists(sshdConfigPath) {
+	if winutil.FileExists(sshdConfigPath) {
 		data, err := os.ReadFile(sshdConfigPath)
 		content := strings.ToLower(string(data))
 		check("sshd_config present", err == nil, sshdConfigPath)
@@ -49,21 +50,21 @@ func verify() int {
 	}
 
 	// 3. Firewall rule
-	if runCmdOK("netsh", "advfirewall", "firewall", "show", "rule", "name=OpenSSH-Server-In-TCP") == nil {
+	if winutil.RunCmdOK("netsh", "advfirewall", "firewall", "show", "rule", "name=OpenSSH-Server-In-TCP") == nil {
 		check("Firewall port 22", true, "OpenSSH-Server-In-TCP exists")
 	} else {
 		check("Firewall port 22", false, "rule missing")
 	}
 
 	// 3b. Default shell is PowerShell (not cmd.exe)
-	out, err := runPS("(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell")
+	out, err := winutil.RunPS("(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell")
 	check("Default shell is PowerShell", err == nil && strings.Contains(strings.ToLower(out), "powershell"), strings.TrimSpace(out))
 
 	// 4. User + admin membership
 	if userExists(targetUser) {
 		check("User "+targetUser, true, "")
-		group, err := adminGroupName()
-		inGroup := err == nil && runCmdOK("net", "localgroup", group, targetUser) == nil
+		group, err := winutil.AdminGroupName()
+		inGroup := err == nil && winutil.RunCmdOK("net", "localgroup", group, targetUser) == nil
 		check(targetUser+" in admin group", inGroup, "group: "+group)
 	} else {
 		check("User "+targetUser, false, "not found")
@@ -75,7 +76,7 @@ func verify() int {
 		check("Tailscale installed", false, "not found")
 	} else {
 		check("Tailscale installed", true, tsPath)
-		if err := runCmdOK(tsPath, "status"); err == nil {
+		if err := winutil.RunCmdOK(tsPath, "status"); err == nil {
 			ip := tailscaleIP(tsPath)
 			check("Tailscale connected", ip != "<unavailable>" && ip != "", "IP: "+ip)
 		} else {
@@ -85,27 +86,9 @@ func verify() int {
 
 	fmt.Println()
 	if failed {
-		cRed("Result: one or more checks FAILED")
+		ui.Red("Result: one or more checks FAILED")
 		return 1
 	}
-	cGreen("Result: all checks passed")
+	ui.Green("Result: all checks passed")
 	return 0
-}
-
-// serviceState extracts RUNNING / STOPPED from `sc query` output. The STATE
-// label is localized (STATE / ESTADO / ...), so match on the numeric state
-// code that is always present in field 3 regardless of system language.
-func serviceState(output string) string {
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) >= 3 && strings.ContainsRune(fields[1], ':') {
-			switch fields[2] {
-			case "1":
-				return "STOPPED"
-			case "4":
-				return "RUNNING"
-			}
-		}
-	}
-	return "UNKNOWN"
 }
