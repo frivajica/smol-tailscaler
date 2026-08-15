@@ -111,6 +111,19 @@ func hideTailscaleTray() {
 
 func tailscaleAuth(tsPath string) error {
 	step(5, 6, "Tailscale auth")
+
+	// Right after boot the daemon may still be starting; `tailscale status`
+	// then reports "Tailscale is starting" with an error, which would look
+	// like a logged-out node and trigger a needless re-auth. Wait it out.
+	for i := 0; i < 5; i++ {
+		out, err := runCmd(tsPath, "status")
+		if err == nil || !strings.Contains(strings.ToLower(out), "starting") {
+			break
+		}
+		cGray("  tailscale status: %s\n", strings.TrimSpace(out))
+		time.Sleep(3 * time.Second)
+	}
+
 	statusOut, err := runCmd(tsPath, "status")
 	if err != nil {
 		cGray("  tailscale status: %s\n", strings.TrimSpace(statusOut))

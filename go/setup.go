@@ -119,5 +119,6 @@ Subsystem sftp sftp-server.exe
 			return fmt.Errorf("writing sshd_config: %w (PowerShell fallback: %v)", err, perr)
 		}
 	}
+	ok("sshd_config written")
 	return nil
 }
